@@ -150,21 +150,92 @@ function toNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+function toNonNegativeNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+type UpstreamErrorCategory = 'NETWORK' | 'HTTP_ERROR' | 'UPSTREAM_HTML' | 'INVALID_JSON';
+
+class UpstreamServiceError extends Error {
+  readonly category: UpstreamErrorCategory;
+  readonly statusCode?: number;
+
+  constructor(category: UpstreamErrorCategory, message: string, statusCode?: number) {
+    super(message);
+    this.name = 'UpstreamServiceError';
+    this.category = category;
+    this.statusCode = statusCode;
+  }
+}
+
+function looksLikeHtmlOrNonJson(rawText: string, contentType: string): boolean {
+  const lowerCt = contentType.toLowerCase();
+  if (lowerCt.includes('text/html') || lowerCt.includes('application/xhtml')) {
+    return true;
+  }
+  const trimmed = rawText.trim();
+  if (!trimmed) return false;
+  if (
+    trimmed.startsWith('<') ||
+    /^<!doctype/i.test(trimmed) ||
+    /^the page /i.test(trimmed)
+  ) {
+    return true;
+  }
+  return !trimmed.startsWith('{') && !trimmed.startsWith('[');
+}
+
+function parseUpstreamJsonText(rawText: string, contentType = ''): unknown {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    throw new UpstreamServiceError('INVALID_JSON', 'Upstream returned an empty response');
+  }
+  if (looksLikeHtmlOrNonJson(trimmed, contentType)) {
+    throw new UpstreamServiceError('UPSTREAM_HTML', 'Upstream returned HTML or non-JSON content');
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    throw new UpstreamServiceError('INVALID_JSON', 'Upstream returned malformed JSON');
+  }
+}
+
 async function fetchJsonWithTimeout(url: string, timeoutMs = 10000): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'HAWA-JANO/1.0',
-        Accept: 'application/json',
-      },
-    });
-    if (!res.ok) {
-      throw new Error(`Upstream HTTP ${res.status}`);
+    let res: globalThis.Response;
+    try {
+      res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'HAWA-JANO/1.0',
+          Accept: 'application/json',
+        },
+      });
+    } catch (err) {
+      const reason =
+        err instanceof Error && err.name === 'AbortError'
+          ? 'Upstream request timed out'
+          : 'Network error reaching upstream service';
+      throw new UpstreamServiceError('NETWORK', reason);
     }
-    return await res.json();
+
+    const contentType = res.headers.get('content-type') || '';
+    const rawText = await res.text();
+
+    if (!res.ok) {
+      if (looksLikeHtmlOrNonJson(rawText, contentType)) {
+        throw new UpstreamServiceError(
+          'UPSTREAM_HTML',
+          `Upstream returned HTTP ${res.status} HTML error page`,
+          res.status
+        );
+      }
+      throw new UpstreamServiceError('HTTP_ERROR', `Upstream HTTP ${res.status}`, res.status);
+    }
+
+    return parseUpstreamJsonText(rawText, contentType);
   } finally {
     clearTimeout(timer);
   }
@@ -182,14 +253,14 @@ async function startServer() {
     });
   });
 
-  // Geocode endpoint: supports city names, Indian PIN codes, or reverse geocoding
+  // Geocode endpoint: supports Indian 6-digit PIN codes, city names, or reverse geocoding
   app.get('/api/geocode', async (req: Request, res: Response) => {
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
       const latStr = typeof req.query.lat === 'string' ? req.query.lat.trim() : '';
       const lonStr = typeof req.query.lon === 'string' ? req.query.lon.trim() : '';
 
-      // Reverse geocoding from coordinates
+      // Reverse geocoding from browser coordinates
       if (latStr && lonStr) {
         const lat = Number(latStr);
         const lon = Number(lonStr);
@@ -213,6 +284,7 @@ async function startServer() {
           addr.county ||
           addr.state_district ||
           'Current Location';
+        const district = addr.state_district || addr.county || addr.city_district || '';
         const region = addr.state || addr.region || '';
         const country = addr.country || 'Unknown';
         const countryCode = (addr.country_code || '').toUpperCase();
@@ -223,6 +295,7 @@ async function startServer() {
             {
               name: region ? `${city}, ${region}` : city,
               city,
+              district,
               region,
               country,
               countryCode,
@@ -235,77 +308,208 @@ async function startServer() {
         return;
       }
 
-      if (!q || q.length < 2) {
-        res.status(400).json({ error: 'Enter at least 2 characters for city or PIN code.' });
+      if (!q) {
+        res.status(400).json({ error: 'Please enter a valid 6-digit PIN code.' });
         return;
       }
 
-      // If query looks like a postal/PIN code (mostly digits, e.g., 110001 or 94107)
-      const isPostal = /^\d{4,7}$/.test(q);
-      if (isPostal) {
-        // Query Nominatim for postal code (prioritize India if 6-digit PIN)
-        const countryHint = q.length === 6 ? '&countrycodes=in' : '';
-        const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&postalcode=${encodeURIComponent(
-          q
-        )}${countryHint}&addressdetails=1&limit=5`;
-        const nomData = (await fetchJsonWithTimeout(nomUrl, 8000)) as Array<{
+      // If user typed digits only, enforce exact 6-digit Indian PIN code validation
+      if (/^\d+$/.test(q)) {
+        if (!/^\d{6}$/.test(q)) {
+          res.status(400).json({ error: 'Please enter a valid 6-digit PIN code.' });
+          return;
+        }
+
+        interface IndiaPostOffice {
+          Name?: string;
+          BranchType?: string;
+          Block?: string;
+          District?: string;
+          State?: string;
+          Country?: string;
+        }
+        interface IndiaPostEntry {
+          Status?: string;
+          PostOffice?: IndiaPostOffice[] | null;
+        }
+        interface NominatimItem {
           lat: string;
           lon: string;
           display_name: string;
           address?: Record<string, string>;
-        }>;
-
-        let results = (Array.isArray(nomData) ? nomData : []).map((item) => {
-          const addr = item.address ?? {};
-          const city =
-            addr.city ||
-            addr.town ||
-            addr.village ||
-            addr.suburb ||
-            addr.state_district ||
-            addr.county ||
-            q;
-          const region = addr.state || '';
-          const country = addr.country || (q.length === 6 ? 'India' : '');
-          const countryCode = (addr.country_code || (q.length === 6 ? 'IN' : '')).toUpperCase();
-          return {
-            name: region ? `${city}, ${region} (${q})` : `${city} (${q})`,
-            city,
-            region,
-            country,
-            countryCode,
-            pinCode: q,
-            latitude: Number(item.lat),
-            longitude: Number(item.lon),
-          };
-        });
-
-        // Fallback to general Nominatim search if country-hinted postal returned nothing
-        if (results.length === 0) {
-          const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(
-            q
-          )}&addressdetails=1&limit=5`;
-          const fbData = (await fetchJsonWithTimeout(fallbackUrl, 8000)) as typeof nomData;
-          results = (Array.isArray(fbData) ? fbData : []).map((item) => {
-            const addr = item.address ?? {};
-            const city = addr.city || addr.town || addr.suburb || addr.state_district || q;
-            const region = addr.state || '';
-            const country = addr.country || '';
-            const countryCode = (addr.country_code || '').toUpperCase();
-            return {
-              name: region ? `${city}, ${region}` : city,
-              city,
-              region,
-              country,
-              countryCode,
-              pinCode: addr.postcode || q,
-              latitude: Number(item.lat),
-              longitude: Number(item.lon),
-            };
-          });
         }
 
-        res.json({ results });
+        const postalUrl = `https://api.postalpincode.in/pincode/${encodeURIComponent(q)}`;
+        const nomUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&postalcode=${encodeURIComponent(
+          q
+        )}&countrycodes=in&addressdetails=1&limit=5`;
+
+        const [postalSettled, nomSettled] = await Promise.allSettled([
+          fetchJsonWithTimeout(postalUrl, 8000) as Promise<IndiaPostEntry[]>,
+          fetchJsonWithTimeout(nomUrl, 8000) as Promise<NominatimItem[]>,
+        ]);
+
+        let postalSuccess = false;
+        let postalNotFound = false;
+        let primaryPo: IndiaPostOffice | null = null;
+
+        if (postalSettled.status === 'fulfilled' && Array.isArray(postalSettled.value)) {
+          const firstEntry = postalSettled.value[0];
+          if (
+            firstEntry?.Status === 'Success' &&
+            Array.isArray(firstEntry.PostOffice) &&
+            firstEntry.PostOffice.length > 0
+          ) {
+            postalSuccess = true;
+            primaryPo =
+              firstEntry.PostOffice.find((p) => p.BranchType === 'Head Post Office') ||
+              firstEntry.PostOffice.find((p) => p.BranchType === 'Sub Post Office') ||
+              firstEntry.PostOffice[0];
+          } else if (firstEntry?.Status === 'Error' || firstEntry?.Status === '404') {
+            postalNotFound = true;
+          }
+        }
+
+        const nomItems =
+          nomSettled.status === 'fulfilled' && Array.isArray(nomSettled.value)
+            ? nomSettled.value
+            : [];
+        const nomResolvedCleanly = nomSettled.status === 'fulfilled';
+
+        const validNomCoords = nomItems
+          .map((item) => ({
+            lat: Number(item.lat),
+            lon: Number(item.lon),
+            addr: item.address ?? {},
+          }))
+          .find((item) => Number.isFinite(item.lat) && Number.isFinite(item.lon));
+
+        // 1. Primary path: India Post returned verified city, district, state, country
+        if (postalSuccess && primaryPo) {
+          const district = (primaryPo.District || '').trim();
+          const region = (primaryPo.State || '').trim();
+          const country = (primaryPo.Country || 'India').trim();
+          const block =
+            primaryPo.Block && primaryPo.Block !== 'NA' ? primaryPo.Block.trim() : '';
+          const poName = (primaryPo.Name || '').trim();
+          const city = block || district || poName || q;
+
+          let latitude = validNomCoords?.lat ?? NaN;
+          let longitude = validNomCoords?.lon ?? NaN;
+
+          // If Nominatim didn't return coordinates for the PIN, resolve coordinates for the district/state
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            const coordQueries = [
+              [city, region].filter(Boolean).join(', '),
+              [district, region].filter(Boolean).join(', '),
+              district,
+            ].filter(Boolean);
+
+            for (const cq of coordQueries) {
+              try {
+                const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+                  cq
+                )}&count=3&language=en&format=json&countryCode=IN`;
+                const geoData = (await fetchJsonWithTimeout(geoUrl, 6000)) as {
+                  results?: Array<{ latitude: number; longitude: number; country_code?: string }>;
+                };
+                const match = (geoData.results ?? []).find(
+                  (r) =>
+                    Number.isFinite(r.latitude) &&
+                    Number.isFinite(r.longitude) &&
+                    (!r.country_code || r.country_code.toUpperCase() === 'IN')
+                );
+                if (match) {
+                  latitude = match.latitude;
+                  longitude = match.longitude;
+                  break;
+                }
+              } catch {
+                // Try next coordinate query
+              }
+            }
+          }
+
+          if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+            const displayLabel =
+              city && region && city.toLowerCase() !== region.toLowerCase()
+                ? `${city}, ${region} (${q})`
+                : `${city} (${q})`;
+
+            res.json({
+              results: [
+                {
+                  name: displayLabel,
+                  city,
+                  district,
+                  region,
+                  country,
+                  countryCode: 'IN',
+                  pinCode: q,
+                  latitude,
+                  longitude,
+                },
+              ],
+            });
+            return;
+          }
+        }
+
+        // 2. Fallback path: Nominatim returned valid Indian postal coordinates directly
+        if (nomItems.length > 0 && !postalNotFound) {
+          const results = nomItems
+            .map((item) => {
+              const lat = Number(item.lat);
+              const lon = Number(item.lon);
+              if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+              const addr = item.address ?? {};
+              const city =
+                addr.city ||
+                addr.town ||
+                addr.village ||
+                addr.suburb ||
+                addr.state_district ||
+                addr.county ||
+                q;
+              const district = addr.state_district || addr.county || addr.city_district || '';
+              const region = addr.state || '';
+              const country = addr.country || 'India';
+              const countryCode = (addr.country_code || 'IN').toUpperCase();
+              return {
+                name: region ? `${city}, ${region} (${q})` : `${city} (${q})`,
+                city,
+                district,
+                region,
+                country,
+                countryCode,
+                pinCode: q,
+                latitude: lat,
+                longitude: lon,
+              };
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null);
+
+          if (results.length > 0) {
+            res.json({ results });
+            return;
+          }
+        }
+
+        // 3. Clean "no match found" if providers answered with valid JSON saying no such PIN
+        if (postalNotFound || (nomResolvedCleanly && nomItems.length === 0 && postalSettled.status === 'fulfilled')) {
+          res.json({ results: [] });
+          return;
+        }
+
+        // 4. All providers failed (network / HTML / invalid JSON / timeout)
+        res.status(503).json({
+          error: 'Location service is temporarily unavailable.',
+        });
+        return;
+      }
+
+      if (q.length < 2) {
+        res.status(400).json({ error: 'Enter at least 2 characters for city or PIN code.' });
         return;
       }
 
@@ -317,6 +521,7 @@ async function startServer() {
         results?: Array<{
           name: string;
           admin1?: string;
+          admin2?: string;
           country?: string;
           country_code?: string;
           latitude: number;
@@ -327,6 +532,7 @@ async function startServer() {
       const results = (geoData.results ?? []).map((r) => ({
         name: r.admin1 ? `${r.name}, ${r.admin1}` : r.name,
         city: r.name,
+        district: r.admin2 || '',
         region: r.admin1 || '',
         country: r.country || '',
         countryCode: (r.country_code || '').toUpperCase(),
@@ -335,9 +541,8 @@ async function startServer() {
       }));
 
       res.json({ results });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Location lookup failed';
-      res.status(502).json({ error: `Unable to look up location right now (${msg}).` });
+    } catch {
+      res.status(503).json({ error: 'Location service is temporarily unavailable.' });
     }
   });
 
@@ -393,16 +598,16 @@ async function startServer() {
       const aqCur = aqRaw.current ?? {};
       const wCur = weatherRaw.current ?? {};
 
-      let pollutants = {
-        pm25: toNum(aqCur.pm2_5),
-        pm10: toNum(aqCur.pm10),
-        no2: toNum(aqCur.nitrogen_dioxide),
-        o3: toNum(aqCur.ozone),
-        co: toNum(aqCur.carbon_monoxide),
-        so2: toNum(aqCur.sulphur_dioxide),
+      const pollutants = {
+        pm25: toNonNegativeNum(aqCur.pm2_5),
+        pm10: toNonNegativeNum(aqCur.pm10),
+        no2: toNonNegativeNum(aqCur.nitrogen_dioxide),
+        o3: toNonNegativeNum(aqCur.ozone),
+        co: toNonNegativeNum(aqCur.carbon_monoxide),
+        so2: toNonNegativeNum(aqCur.sulphur_dioxide),
       };
 
-      let usAqiValue = toNum(aqCur.us_aqi);
+      let usAqiValue = toNonNegativeNum(aqCur.us_aqi);
       let sourceLabel = 'Open-Meteo Copernicus CAMS & Weather';
       let stationName: string | undefined;
       let measuredAt =
@@ -425,14 +630,16 @@ async function startServer() {
             };
           };
           if (waqiRes.status === 'ok' && waqiRes.data) {
-            stationName = waqiRes.data.city?.name;
-            if (typeof waqiRes.data.aqi === 'number') {
+            stationName = waqiRes.data.city?.name || undefined;
+            if (typeof waqiRes.data.aqi === 'number' && Number.isFinite(waqiRes.data.aqi)) {
               usAqiValue = waqiRes.data.aqi;
             }
             if (waqiRes.data.time?.iso) {
               measuredAt = waqiRes.data.time.iso;
             }
-            sourceLabel = 'WAQI Monitoring Station + Open-Meteo Forecast';
+            if (stationName) {
+              sourceLabel = 'WAQI Monitoring Station + Open-Meteo Forecast';
+            }
           }
         } catch {
           // Non-fatal: continue with Open-Meteo CAMS data
@@ -478,12 +685,12 @@ async function startServer() {
 
       for (let i = startIdx; i <= endIdx; i++) {
         const tStr = String(times[i] ?? '');
-        const p25 = toNum(pm25Arr[i]);
-        const p10 = toNum(pm10Arr[i]);
-        const n2 = toNum(no2Arr[i]);
-        const oz = toNum(o3Arr[i]);
-        const coVal = toNum(coArr[i]);
-        const usVal = toNum(usAqiArr[i]);
+        const p25 = toNonNegativeNum(pm25Arr[i]);
+        const p10 = toNonNegativeNum(pm10Arr[i]);
+        const n2 = toNonNegativeNum(no2Arr[i]);
+        const oz = toNonNegativeNum(o3Arr[i]);
+        const coVal = toNonNegativeNum(coArr[i]);
+        const usVal = toNonNegativeNum(usAqiArr[i]);
         const inVal = computeInNaqi({
           pm25: p25,
           pm10: p10,
@@ -520,6 +727,12 @@ async function startServer() {
         arr.length > 0 ? Math.round(arr.reduce((s, n) => s + n, 0) / arr.length) : null;
 
       const weatherCode = toNum(wCur.weather_code);
+      const stationCoverage: 'verified' | 'gridded-model' = stationName
+        ? 'verified'
+        : 'gridded-model';
+      const stationNotice = stationName
+        ? undefined
+        : 'No nearby verified air-quality monitoring station is currently available.';
 
       const payload = {
         locationName,
@@ -530,6 +743,8 @@ async function startServer() {
         fetchedAt: new Date().toISOString(),
         source: sourceLabel,
         stationName,
+        stationCoverage,
+        stationNotice,
         pollutants,
         weather: {
           temperature: toNum(wCur.temperature_2m),
@@ -556,11 +771,9 @@ async function startServer() {
 
       aqCache.set(cacheKey, { value: payload, expiresAt: Date.now() + AQ_CACHE_TTL_MS });
       res.json(payload);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Upstream provider unreachable';
+    } catch {
       res.status(502).json({
         error: 'Live air quality data is currently unavailable.',
-        details: msg,
       });
     }
   });

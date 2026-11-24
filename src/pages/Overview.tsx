@@ -132,13 +132,18 @@ export const Overview: React.FC = () => {
             </div>
 
             {effectiveSnapshot && (
-              <div className="text-right text-xs font-mono text-neutral-500 dark:text-slate-400">
+              <div className="text-right text-xs font-mono text-neutral-500 dark:text-slate-400 max-w-xs">
                 <div>
                   {t('overview.updated')}: {formatTimestamp(effectiveSnapshot.measuredAt)}
                 </div>
                 <div className="mt-0.5">
                   {isShowingCachedData ? t('overview.cachedSnapshot') : effectiveSnapshot.source}
                 </div>
+                {effectiveSnapshot.stationCoverage !== 'verified' && (
+                  <div className="mt-0.5 text-[11px] text-neutral-500 dark:text-slate-400">
+                    {t('modals.stationUnavailable')}
+                  </div>
+                )}
               </div>
             )}
           </div>

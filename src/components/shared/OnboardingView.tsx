@@ -12,7 +12,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
-import { requestBrowserLocation, searchLocations } from '../../services/airQualityService';
+import {
+  LOCATION_ERROR_MESSAGES,
+  requestBrowserLocation,
+  searchLocations,
+} from '../../services/airQualityService';
 import type {
   BudgetPreference,
   CommuteMode,
@@ -56,6 +60,17 @@ export const OnboardingView: React.FC = () => {
   const [diet, setDiet] = useState<DietPreference>(profile.preferences.diet);
   const [budget, setBudget] = useState<BudgetPreference>(profile.preferences.budget);
 
+  const mapLocError = (err: unknown): string => {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === LOCATION_ERROR_MESSAGES.INVALID_PIN) return t('modals.invalidPin');
+    if (msg === LOCATION_ERROR_MESSAGES.NETWORK) return t('modals.networkError');
+    if (msg === LOCATION_ERROR_MESSAGES.LOCATION_SERVICE) return t('modals.locationSearchError');
+    if (!msg || /unexpected token|is not valid json|<!doctype|<html/i.test(msg)) {
+      return t('modals.locationSearchError');
+    }
+    return msg;
+  };
+
   const handleGeolocation = async () => {
     setLocLoading(true);
     setLocError(null);
@@ -63,7 +78,7 @@ export const OnboardingView: React.FC = () => {
       const loc = await requestBrowserLocation();
       setLocalLocation(loc);
     } catch (err) {
-      setLocError(err instanceof Error ? err.message : 'Unable to detect location.');
+      setLocError(mapLocError(err));
     } finally {
       setLocLoading(false);
     }
@@ -71,17 +86,23 @@ export const OnboardingView: React.FC = () => {
 
   const handleSearchCity = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cityQuery.trim()) return;
+    const trimmed = cityQuery.trim();
+    if (!trimmed || (/^\d+$/.test(trimmed) && !/^\d{6}$/.test(trimmed)) || trimmed.length < 2) {
+      setSearchResults([]);
+      setLocError(t('modals.invalidPin'));
+      return;
+    }
     setLocLoading(true);
     setLocError(null);
     try {
-      const found = await searchLocations(cityQuery.trim());
+      const found = await searchLocations(trimmed);
       setSearchResults(found);
       if (found.length === 0) {
-        setLocError('No matching city or PIN code found.');
+        setLocError(t('modals.noLocationMatch'));
       }
     } catch (err) {
-      setLocError(err instanceof Error ? err.message : 'Location search failed.');
+      setSearchResults([]);
+      setLocError(mapLocError(err));
     } finally {
       setLocLoading(false);
     }
@@ -220,13 +241,16 @@ export const OnboardingView: React.FC = () => {
                 <input
                   type="text"
                   value={cityQuery}
-                  onChange={(e) => setCityQuery(e.target.value)}
+                  onChange={(e) => {
+                    setCityQuery(e.target.value);
+                    if (locError) setLocError(null);
+                  }}
                   placeholder={t('onboarding.searchPlaceholder')}
                   className="flex-1 px-3.5 py-2.5 text-sm bg-white dark:bg-[#151C28] border border-[#DADADA] dark:border-[#222B3A] focus:outline-none focus:border-[#080808] dark:focus:border-white"
                 />
                 <button
                   type="submit"
-                  disabled={locLoading || !cityQuery.trim()}
+                  disabled={locLoading}
                   className="px-4 py-2.5 border border-[#080808] dark:border-white text-sm font-medium hover:bg-[#F3F3F3] dark:hover:bg-[#151C28] flex items-center gap-1.5"
                 >
                   <Search className="w-4 h-4" />
@@ -235,36 +259,53 @@ export const OnboardingView: React.FC = () => {
               </form>
 
               {locError && (
-                <div className="p-3 border border-red-600 bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300">
+                <div
+                  role="alert"
+                  className="p-3 border border-red-600 bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300"
+                >
                   {locError}
                 </div>
               )}
 
               {searchResults.length > 0 && (
                 <div className="border border-[#DADADA] dark:border-[#222B3A] divide-y divide-[#DADADA] dark:divide-[#2A2A2A] max-h-48 overflow-y-auto">
-                  {searchResults.map((res, i) => (
-                    <button
-                      key={`${res.latitude}-${res.longitude}-${i}`}
-                      type="button"
-                      onClick={() => {
-                        setLocalLocation({
-                          ...res,
-                          source: 'manual',
-                          updatedAt: new Date().toISOString(),
-                        });
-                        setSearchResults([]);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 text-sm hover:bg-[#F3F3F3] dark:hover:bg-[#151C28] flex items-center justify-between"
-                    >
-                      <span>
-                        <strong className="font-semibold">{res.name}</strong>
-                        <span className="text-neutral-500 dark:text-neutral-400">
-                          {res.country ? ` · ${res.country}` : ''}
+                  {searchResults.map((res, i) => {
+                    const meta = [
+                      res.district && res.district !== res.city ? res.district : '',
+                      res.region || '',
+                      res.country || '',
+                      res.pinCode ? `PIN ${res.pinCode}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return (
+                      <button
+                        key={`${res.latitude}-${res.longitude}-${i}`}
+                        type="button"
+                        onClick={() => {
+                          setLocalLocation({
+                            ...res,
+                            source: 'manual',
+                            updatedAt: new Date().toISOString(),
+                          });
+                          setSearchResults([]);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 text-sm hover:bg-[#F3F3F3] dark:hover:bg-[#151C28] flex items-center justify-between gap-3"
+                      >
+                        <span className="min-w-0">
+                          <strong className="font-semibold block truncate">
+                            {res.city || res.name}
+                          </strong>
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400 block truncate">
+                            {meta || '—'}
+                          </span>
                         </span>
-                      </span>
-                      <span className="font-mono text-xs text-neutral-500">{t('common.select')}</span>
-                    </button>
-                  ))}
+                        <span className="font-mono text-xs text-neutral-500 shrink-0">
+                          {t('common.select')}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 

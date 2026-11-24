@@ -23,6 +23,7 @@ export type AqiBandKey =
 export interface LocationData {
   name: string;
   city: string;
+  district?: string;
   region?: string;
   country: string;
   countryCode: string;
@@ -124,6 +125,8 @@ export interface AirQualitySnapshot {
   fetchedAt: string;
   source: string;
   stationName?: string;
+  stationCoverage?: 'verified' | 'gridded-model' | 'unavailable';
+  stationNotice?: string;
   pollutants: PollutantReadings;
   weather: WeatherData;
   scales: {
@@ -245,6 +248,7 @@ export interface AppNotification {
 export interface GeocodeResult {
   name: string;
   city: string;
+  district?: string;
   region?: string;
   country: string;
   countryCode: string;

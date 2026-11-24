@@ -1,3 +1,4 @@
+import { parseApiJson } from './airQualityService';
 import type {
   AirQualitySnapshot,
   AqiScale,
@@ -19,12 +20,10 @@ export async function generateDailyRoutine(params: {
     body: JSON.stringify(params),
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Failed to generate personalized daily routine.');
-  }
-
-  return data as DailyRoutinePlan;
+  return await parseApiJson<DailyRoutinePlan>(
+    res,
+    'Failed to generate personalized daily routine.'
+  );
 }
 
 export async function streamAssistantChat(params: {
@@ -50,12 +49,13 @@ export async function streamAssistantChat(params: {
   });
 
   if (!res.ok) {
-    let errorMsg = 'Unable to reach HAWA JANO Assistant.';
+    let errorMsg = 'AI connection unavailable. Please check your API configuration or try again.';
     try {
-      const errJson = await res.json();
-      if (errJson.error) errorMsg = errJson.error;
-    } catch {
-      // keep default
+      await parseApiJson<unknown>(res, errorMsg);
+    } catch (err) {
+      if (err instanceof Error && err.message) {
+        errorMsg = err.message;
+      }
     }
     throw new Error(errorMsg);
   }

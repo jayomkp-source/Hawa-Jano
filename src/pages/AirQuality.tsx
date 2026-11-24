@@ -76,7 +76,9 @@ export const AirQuality: React.FC = () => {
             <strong className="text-[#080808] dark:text-white">{t(`scale.${activeScale}`)}</strong>
             {effectiveSnapshot?.stationName
               ? ` · ${t('airQuality.stationLabel')}: ${effectiveSnapshot.stationName}`
-              : ''}
+              : effectiveSnapshot
+                ? ` · ${t('modals.stationUnavailable')}`
+                : ''}
           </p>
         </div>
 
