@@ -1,0 +1,187 @@
+import React, { useState } from 'react';
+import { LocateFixed, MapPin, Search, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useApp } from '../../contexts/AppContext';
+import { requestBrowserLocation, searchLocations } from '../../services/airQualityService';
+import type { GeocodeResult } from '../../types';
+
+export const LocationSelectorModal: React.FC = () => {
+  const { t } = useTranslation();
+  const { isLocationModalOpen, setIsLocationModalOpen, setLocation, profile } = useApp();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GeocodeResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!isLocationModalOpen) return null;
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setSearching(true);
+    setError(null);
+    try {
+      const found = await searchLocations(query.trim());
+      setResults(found);
+      if (found.length === 0) {
+        setError(t('modals.noLocationMatch'));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('modals.locationSearchError'));
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleDetectLocation = async () => {
+    setGeoLoading(true);
+    setError(null);
+    try {
+      const loc = await requestBrowserLocation();
+      setLocation(loc);
+      setIsLocationModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('modals.locationAccessError'));
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  const handleSelectResult = (item: GeocodeResult) => {
+    setLocation({
+      ...item,
+      source: 'manual',
+      updatedAt: new Date().toISOString(),
+    });
+    setIsLocationModalOpen(false);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="location-modal-title"
+    >
+      <div className="w-full max-w-lg bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-sky-600 dark:border-t-sky-400 p-6">
+        <div className="flex items-start justify-between gap-4 border-b border-[#DADADA] dark:border-[#222B3A] pb-4">
+          <div>
+            <p className="text-xs font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400">
+              {t('modals.locationKicker')}
+            </p>
+            <h2
+              id="location-modal-title"
+              className="text-xl font-bold text-[#080808] dark:text-white mt-1"
+            >
+              {t('modals.locationTitle')}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsLocationModalOpen(false)}
+            className="p-2 border border-[#DADADA] dark:border-[#222B3A] text-[#080808] dark:text-white hover:bg-[#F3F3F3] dark:hover:bg-[#151C28]"
+            aria-label="Close location selector"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-5">
+          {profile.location && (
+            <div className="p-3 bg-[#F3F3F3] dark:bg-[#151C28] border border-[#DADADA] dark:border-[#222B3A] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {t('modals.activeLocation')}
+                  </div>
+                  <div className="text-sm font-semibold text-[#080808] dark:text-white truncate">
+                    {profile.location.name}
+                    {profile.location.country ? ` · ${profile.location.country}` : ''}
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 shrink-0">
+                {profile.location.source === 'geolocation'
+                  ? t('modals.sourceGps')
+                  : t('modals.sourceManual')}
+              </span>
+            </div>
+          )}
+
+          <div>
+            <button
+              type="button"
+              onClick={handleDetectLocation}
+              disabled={geoLoading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm disabled:opacity-50 transition-colors"
+            >
+              <LocateFixed className="w-4 h-4 text-white" />
+              {geoLoading ? t('modals.gpsLoading') : t('modals.gpsBtn')}
+            </button>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5">
+              {t('modals.gpsNote')}
+            </p>
+          </div>
+
+          <div className="border-t border-[#DADADA] dark:border-[#222B3A] pt-4">
+            <form onSubmit={handleSearch} className="flex gap-2">
+              <label htmlFor="location-search-input" className="sr-only">
+                {t('modals.locationSearchPlaceholder')}
+              </label>
+              <input
+                id="location-search-input"
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('modals.locationSearchPlaceholder')}
+                className="flex-1 px-3 py-2.5 text-sm bg-white dark:bg-[#151C28] border border-[#DADADA] dark:border-[#222B3A] text-[#080808] dark:text-white focus:outline-none focus:border-[#080808] dark:focus:border-white"
+              />
+              <button
+                type="submit"
+                disabled={searching || !query.trim()}
+                className="px-4 py-2.5 border border-[#080808] dark:border-white text-sm font-medium text-[#080808] dark:text-white hover:bg-[#F3F3F3] dark:hover:bg-[#151C28] disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+              >
+                <Search className="w-4 h-4" />
+                {searching ? t('common.searching') : t('common.search')}
+              </button>
+            </form>
+          </div>
+
+          {error && (
+            <div className="p-3 border border-red-600 bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
+          {results.length > 0 && (
+            <div className="border border-[#DADADA] dark:border-[#222B3A] divide-y divide-[#DADADA] dark:divide-[#222B3A] max-h-56 overflow-y-auto">
+              {results.map((item, idx) => (
+                <button
+                  key={`${item.latitude}-${item.longitude}-${idx}`}
+                  type="button"
+                  onClick={() => handleSelectResult(item)}
+                  className="w-full text-left px-3.5 py-2.5 hover:bg-[#F3F3F3] dark:hover:bg-[#151C28] flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-[#080808] dark:text-white truncate">
+                      {item.name}
+                    </div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                      {item.country || '—'}
+                      {item.pinCode ? ` · PIN ${item.pinCode}` : ''}
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 tabular-nums shrink-0">
+                    {item.latitude.toFixed(2)}, {item.longitude.toFixed(2)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

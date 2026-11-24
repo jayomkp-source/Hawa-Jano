@@ -1,0 +1,6 @@
+{
+  "name": "HAWA JANO",
+  "description": "Breathe Smarter. Live Better. Location-aware environmental intelligence, Gemini AI daily routine planner, indoor air quality lab, and sustainable impact companion.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
