@@ -104,13 +104,14 @@ export const AirQualityCharts: React.FC<AirQualityChartsProps> = ({ hourly, scal
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex border border-[#DADADA] dark:border-[#222B3A]">
+          <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label="Chart metric">
             {(['aqi', 'pm25', 'pm10', 'no2'] as ChartMetric[]).map((m) => {
               const isSelected = metric === m;
               return (
                 <button
                   key={m}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => setMetric(m)}
                   className={`px-2.5 py-1.5 text-xs font-mono font-semibold uppercase flex items-center gap-1.5 transition-colors ${
                     isSelected
@@ -128,7 +129,7 @@ export const AirQualityCharts: React.FC<AirQualityChartsProps> = ({ hourly, scal
             })}
           </div>
 
-          <div className="flex border border-[#DADADA] dark:border-[#222B3A]">
+          <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label="Time window filter">
             {[
               { id: 'all', label: t('airQuality.view48h') },
               { id: 'past', label: t('airQuality.viewPast24h') },
@@ -137,6 +138,7 @@ export const AirQualityCharts: React.FC<AirQualityChartsProps> = ({ hourly, scal
               <button
                 key={w.id}
                 type="button"
+                aria-pressed={windowFilter === w.id}
                 onClick={() => setWindowFilter(w.id as 'all' | 'past' | 'forecast')}
                 className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
                   windowFilter === w.id
@@ -151,7 +153,11 @@ export const AirQualityCharts: React.FC<AirQualityChartsProps> = ({ hourly, scal
         </div>
       </div>
 
-      <div className="h-72 w-full mt-5">
+      <div
+        className="h-72 w-full mt-5"
+        role="img"
+        aria-label={t('airQuality.chart48Title', { metric: activeMeta.label })}
+      >
         {chartData.length === 0 ? (
           <div className="h-full flex items-center justify-center text-xs text-neutral-500 dark:text-slate-400">
             {t('airQuality.noHourlyPoints')}

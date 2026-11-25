@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import {
@@ -21,7 +29,12 @@ import type {
   SupportedLanguage,
   UserProfile,
 } from '../types';
-import { getAqiCategory, resolveActiveScale, type AqiCategoryMeta } from '../utils/aqi';
+import {
+  getAqiCategory,
+  isAirQualityStale,
+  resolveActiveScale,
+  type AqiCategoryMeta,
+} from '../utils/aqi';
 
 const DEFAULT_PROFILE: UserProfile = {
   onboardingCompleted: false,
@@ -83,6 +96,7 @@ interface AppContextValue {
   activeCategory: AqiCategoryMeta;
   effectiveSnapshot: AirQualitySnapshot | null;
   isShowingCachedData: boolean;
+  isReadingStale: boolean;
 
   routinePlan: DailyRoutinePlan | null;
   routineLoading: boolean;
@@ -234,8 +248,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [setProfile]
   );
 
+  const aqAbortRef = useRef<AbortController | null>(null);
+  const aqRequestSeqRef = useRef(0);
+
   const refreshAirQuality = useCallback(async () => {
+    aqAbortRef.current?.abort();
+    const requestSeq = ++aqRequestSeqRef.current;
+
     if (!profile.location) {
+      aqAbortRef.current = null;
       setAirQuality({
         data: null,
         cachedData: null,
@@ -244,6 +265,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return;
     }
+
+    const controller = new AbortController();
+    aqAbortRef.current = controller;
 
     const cached = loadCachedAirQuality(profile.location);
     setAirQuality((prev) => ({
@@ -254,7 +278,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     try {
-      const snapshot = await fetchLiveAirQuality(profile.location);
+      const snapshot = await fetchLiveAirQuality(profile.location, controller.signal);
+      if (controller.signal.aborted || aqRequestSeqRef.current !== requestSeq) {
+        return;
+      }
       setAirQuality({
         data: snapshot,
         cachedData: snapshot,
@@ -262,6 +289,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         error: null,
       });
     } catch (err) {
+      if ((err instanceof Error && err.name === 'AbortError') || controller.signal.aborted) {
+        return;
+      }
+      if (aqRequestSeqRef.current !== requestSeq) {
+        return;
+      }
       const message =
         err instanceof Error ? err.message : 'Live air quality data is currently unavailable.';
       setAirQuality({
@@ -275,6 +308,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     void refreshAirQuality();
+    return () => {
+      aqAbortRef.current?.abort();
+    };
   }, [refreshAirQuality]);
 
   const activeScale = useMemo(
@@ -284,6 +320,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const effectiveSnapshot = airQuality.data ?? airQuality.cachedData;
   const isShowingCachedData = !airQuality.data && Boolean(airQuality.cachedData);
+  const isReadingStale = useMemo(
+    () => (effectiveSnapshot ? isAirQualityStale(effectiveSnapshot.measuredAt) : false),
+    [effectiveSnapshot]
+  );
 
   const activeScaleReading = useMemo(() => {
     if (!effectiveSnapshot) return { value: null, dominantPollutant: null };
@@ -625,59 +665,112 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDismissedNotificationIds,
   ]);
 
-  const value: AppContextValue = {
-    theme,
-    toggleTheme,
-    language,
-    setLanguage,
-    activeTab,
-    setActiveTab,
-    profile,
-    updateProfile,
-    setLocation,
-    resetAllLocalData,
-    airQuality,
-    refreshAirQuality,
-    activeScale,
-    activeAqiValue,
-    activeDominantPollutant,
-    activeCategory,
-    effectiveSnapshot,
-    isShowingCachedData,
-    routinePlan,
-    routineLoading,
-    routineError,
-    generateRoutine,
-    completedRoutineIds,
-    toggleRoutineDone,
-    completedIndoorTasks,
-    toggleIndoorTask,
-    purifierFilters,
-    addPurifierFilter,
-    resetPurifierFilterDate,
-    removePurifierFilter,
-    committedEcoIds,
-    toggleCommitEco,
-    joinedCommunityIds,
-    toggleJoinCommunity,
-    completedCommunitySteps,
-    toggleCommunityStep,
-    chatMessages,
-    setChatMessages,
-    clearChat,
-    notificationSettings,
-    updateNotificationSettings,
-    notifications,
-    dismissedNotificationIds,
-    dismissNotification,
-    requestBrowserNotificationPermission,
-    isLocationModalOpen,
-    setIsLocationModalOpen,
-    isProfileModalOpen,
-    setIsProfileModalOpen,
-    isNotificationsOpen,
-    setIsNotificationsOpen,
-  };
+  const value = useMemo<AppContextValue>(
+    () => ({
+      theme,
+      toggleTheme,
+      language,
+      setLanguage,
+      activeTab,
+      setActiveTab,
+      profile,
+      updateProfile,
+      setLocation,
+      resetAllLocalData,
+      airQuality,
+      refreshAirQuality,
+      activeScale,
+      activeAqiValue,
+      activeDominantPollutant,
+      activeCategory,
+      effectiveSnapshot,
+      isShowingCachedData,
+      isReadingStale,
+      routinePlan,
+      routineLoading,
+      routineError,
+      generateRoutine,
+      completedRoutineIds,
+      toggleRoutineDone,
+      completedIndoorTasks,
+      toggleIndoorTask,
+      purifierFilters,
+      addPurifierFilter,
+      resetPurifierFilterDate,
+      removePurifierFilter,
+      committedEcoIds,
+      toggleCommitEco,
+      joinedCommunityIds,
+      toggleJoinCommunity,
+      completedCommunitySteps,
+      toggleCommunityStep,
+      chatMessages,
+      setChatMessages,
+      clearChat,
+      notificationSettings,
+      updateNotificationSettings,
+      notifications,
+      dismissedNotificationIds,
+      dismissNotification,
+      requestBrowserNotificationPermission,
+      isLocationModalOpen,
+      setIsLocationModalOpen,
+      isProfileModalOpen,
+      setIsProfileModalOpen,
+      isNotificationsOpen,
+      setIsNotificationsOpen,
+    }),
+    [
+      theme,
+      toggleTheme,
+      language,
+      setLanguage,
+      activeTab,
+      profile,
+      updateProfile,
+      setLocation,
+      resetAllLocalData,
+      airQuality,
+      refreshAirQuality,
+      activeScale,
+      activeAqiValue,
+      activeDominantPollutant,
+      activeCategory,
+      effectiveSnapshot,
+      isShowingCachedData,
+      isReadingStale,
+      routinePlan,
+      routineLoading,
+      routineError,
+      generateRoutine,
+      completedRoutineIds,
+      toggleRoutineDone,
+      completedIndoorTasks,
+      toggleIndoorTask,
+      purifierFilters,
+      addPurifierFilter,
+      resetPurifierFilterDate,
+      removePurifierFilter,
+      committedEcoIds,
+      toggleCommitEco,
+      joinedCommunityIds,
+      toggleJoinCommunity,
+      completedCommunitySteps,
+      toggleCommunityStep,
+      chatMessages,
+      setChatMessages,
+      clearChat,
+      notificationSettings,
+      updateNotificationSettings,
+      notifications,
+      dismissedNotificationIds,
+      dismissNotification,
+      requestBrowserNotificationPermission,
+      isLocationModalOpen,
+      isProfileModalOpen,
+      isNotificationsOpen,
+    ]
+  );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

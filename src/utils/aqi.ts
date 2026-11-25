@@ -87,8 +87,27 @@ const IN_SO2_BP: Breakpoint[] = [
   { cLow: 1600.01, cHigh: 2500, iLow: 401, iHigh: 500 },
 ];
 
+export function toFiniteNumber(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+export function toNonNegativeNumber(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+export function isAirQualityStale(
+  measuredAt: string | null | undefined,
+  thresholdHours = 3,
+  nowMs = Date.now()
+): boolean {
+  if (!measuredAt || typeof measuredAt !== 'string') return true;
+  const parsedMs = new Date(measuredAt).getTime();
+  if (Number.isNaN(parsedMs)) return true;
+  return nowMs - parsedMs > thresholdHours * 60 * 60 * 1000;
+}
+
 function calcSubIndex(concentration: number | null, bps: Breakpoint[]): number | null {
-  if (concentration === null || Number.isNaN(concentration) || concentration < 0) {
+  if (concentration === null || !Number.isFinite(concentration) || concentration < 0) {
     return null;
   }
   for (const bp of bps) {
@@ -109,7 +128,12 @@ export function computeIndianNaqi(pollutants: PollutantReadings): ScaleReading {
     { name: 'O3', sub: calcSubIndex(pollutants.o3, IN_O3_BP) },
     {
       name: 'CO',
-      sub: calcSubIndex(pollutants.co !== null ? pollutants.co / 1000 : null, IN_CO_MG_BP),
+      sub: calcSubIndex(
+        pollutants.co !== null && Number.isFinite(pollutants.co) && pollutants.co >= 0
+          ? pollutants.co / 1000
+          : null,
+        IN_CO_MG_BP
+      ),
     },
     { name: 'SO2', sub: calcSubIndex(pollutants.so2, IN_SO2_BP) },
   ];

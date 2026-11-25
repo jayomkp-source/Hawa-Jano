@@ -10,6 +10,7 @@ export const StatusAlertBanner: React.FC = () => {
     profile,
     airQuality,
     isShowingCachedData,
+    isReadingStale,
     effectiveSnapshot,
     refreshAirQuality,
     setIsLocationModalOpen,
@@ -17,7 +18,10 @@ export const StatusAlertBanner: React.FC = () => {
 
   if (!profile.location) {
     return (
-      <div className="border border-[#DADADA] dark:border-[#222B3A] border-t-2 border-t-blue-600 dark:border-t-blue-400 bg-[#F3F3F3] dark:bg-[#0E131B] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div
+        role="status"
+        className="border border-[#DADADA] dark:border-[#222B3A] border-t-2 border-t-blue-600 dark:border-t-blue-400 bg-[#F3F3F3] dark:bg-[#0E131B] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      >
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -42,7 +46,10 @@ export const StatusAlertBanner: React.FC = () => {
 
   if (airQuality.error) {
     return (
-      <div className="border border-red-600 bg-red-50 dark:bg-red-950/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div
+        role="alert"
+        className="border border-red-600 bg-red-50 dark:bg-red-950/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      >
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <div>
@@ -67,6 +74,39 @@ export const StatusAlertBanner: React.FC = () => {
         >
           <RefreshCw className={`w-3.5 h-3.5 ${airQuality.loading ? 'animate-spin' : ''}`} />
           {t('common.retryLiveFeed')}
+        </button>
+      </div>
+    );
+  }
+
+  if (isReadingStale && effectiveSnapshot) {
+    return (
+      <div
+        role="status"
+        className="border border-amber-600 dark:border-amber-500/70 bg-amber-50 dark:bg-amber-950/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <div className="text-sm font-bold text-amber-900 dark:text-amber-200">
+              {t('banners.staleTitle')}
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+              {t('banners.staleDesc', {
+                time: formatTimestamp(effectiveSnapshot.measuredAt),
+                location: effectiveSnapshot.locationName,
+              })}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void refreshAirQuality()}
+          disabled={airQuality.loading}
+          className="px-3.5 py-2 border border-amber-700 dark:border-amber-400 text-amber-900 dark:text-amber-200 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 hover:bg-amber-100 dark:hover:bg-amber-950"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${airQuality.loading ? 'animate-spin' : ''}`} />
+          {t('common.refresh')}
         </button>
       </div>
     );

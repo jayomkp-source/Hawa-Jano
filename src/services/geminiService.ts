@@ -13,17 +13,50 @@ export async function generateDailyRoutine(params: {
   airQuality: AirQualitySnapshot | null;
   activeScale: AqiScale;
   language: SupportedLanguage;
+  signal?: AbortSignal;
 }): Promise<DailyRoutinePlan> {
-  const res = await fetch('/api/gemini/routine', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-  });
+  const { signal, ...payload } = params;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 30000);
 
-  return await parseApiJson<DailyRoutinePlan>(
-    res,
-    'Failed to generate personalized daily routine.'
-  );
+  const onExternalAbort = () => controller.abort();
+  signal?.addEventListener('abort', onExternalAbort, { once: true });
+
+  try {
+    let res: Response;
+    try {
+      res = await fetch('/api/gemini/routine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (timedOut) {
+        throw new Error('AI request timed out. Please try again.');
+      }
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw err;
+      }
+      throw new Error('AI connection unavailable. Please check your API configuration or try again.');
+    }
+
+    const plan = await parseApiJson<DailyRoutinePlan>(
+      res,
+      'Failed to generate personalized daily routine.'
+    );
+    if (!plan || !Array.isArray(plan.recommendations) || typeof plan.aqiSummary !== 'string') {
+      throw new Error('Failed to generate personalized daily routine.');
+    }
+    return plan;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onExternalAbort);
+  }
 }
 
 export async function streamAssistantChat(params: {
@@ -35,18 +68,26 @@ export async function streamAssistantChat(params: {
   onChunk: (chunkText: string) => void;
   signal?: AbortSignal;
 }): Promise<void> {
-  const res = await fetch('/api/gemini/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: params.messages,
-      profile: params.profile,
-      airQuality: params.airQuality,
-      activeScale: params.activeScale,
-      language: params.language,
-    }),
-    signal: params.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch('/api/gemini/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: params.messages,
+        profile: params.profile,
+        airQuality: params.airQuality,
+        activeScale: params.activeScale,
+        language: params.language,
+      }),
+      signal: params.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw err;
+    }
+    throw new Error('AI connection unavailable. Please check your API configuration or try again.');
+  }
 
   if (!res.ok) {
     let errorMsg = 'AI connection unavailable. Please check your API configuration or try again.';

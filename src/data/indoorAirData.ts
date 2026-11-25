@@ -226,19 +226,74 @@ export interface IndoorLabCalculationResult {
   priorityStrategy: string;
   ventilationDirective: string;
   actionSteps: string[];
+  inputWarning?: string;
+}
+
+export const INDOOR_ROOM_MIN_SQFT = 40;
+export const INDOOR_ROOM_MAX_SQFT = 2500;
+export const INDOOR_OCCUPANTS_MIN = 1;
+export const INDOOR_OCCUPANTS_MAX = 30;
+
+export function sanitizeIndoorInput(input: IndoorLabCalculationInput): {
+  sanitized: IndoorLabCalculationInput;
+  hadInvalidInput: boolean;
+} {
+  let hadInvalidInput = false;
+
+  let roomSizeSqFt = input.roomSizeSqFt;
+  if (typeof roomSizeSqFt !== 'number' || !Number.isFinite(roomSizeSqFt) || roomSizeSqFt <= 0) {
+    hadInvalidInput = true;
+    roomSizeSqFt = 180;
+  } else if (roomSizeSqFt < INDOOR_ROOM_MIN_SQFT || roomSizeSqFt > INDOOR_ROOM_MAX_SQFT) {
+    hadInvalidInput = true;
+    roomSizeSqFt = Math.min(INDOOR_ROOM_MAX_SQFT, Math.max(INDOOR_ROOM_MIN_SQFT, roomSizeSqFt));
+  }
+
+  let occupants = input.occupants;
+  if (typeof occupants !== 'number' || !Number.isFinite(occupants) || occupants < 1) {
+    hadInvalidInput = true;
+    occupants = 2;
+  } else if (occupants > INDOOR_OCCUPANTS_MAX) {
+    hadInvalidInput = true;
+    occupants = INDOOR_OCCUPANTS_MAX;
+  } else {
+    occupants = Math.round(occupants);
+  }
+
+  let outdoorAqi = input.outdoorAqi;
+  if (outdoorAqi !== null && (typeof outdoorAqi !== 'number' || !Number.isFinite(outdoorAqi) || outdoorAqi < 0)) {
+    hadInvalidInput = true;
+    outdoorAqi = null;
+  }
+
+  return {
+    sanitized: {
+      ...input,
+      roomSizeSqFt,
+      occupants,
+      outdoorAqi,
+    },
+    hadInvalidInput,
+  };
 }
 
 export function calculateIndoorRecommendation(
-  input: IndoorLabCalculationInput,
+  rawInput: IndoorLabCalculationInput,
   language: SupportedLanguage = 'en'
 ): IndoorLabCalculationResult {
+  const { sanitized: input, hadInvalidInput } = sanitizeIndoorInput(rawInput);
   const areaSqM = input.roomSizeSqFt * 0.0929;
   const ceilingHeightM = 2.8;
   const roomVolumeM3 = areaSqM * ceilingHeightM;
   const targetAch = input.outdoorAqi !== null && input.outdoorAqi > 200 ? 5 : 4;
   const occupancyFactor = input.occupants > 2 ? 1 + (input.occupants - 2) * 0.08 : 1;
-  const recommendedCadrM3h = Math.round(roomVolumeM3 * targetAch * occupancyFactor);
-  const recommendedCadrCfm = Math.round(recommendedCadrM3h / 1.699);
+  const recommendedCadrM3h = Math.max(10, Math.round(roomVolumeM3 * targetAch * occupancyFactor));
+  const recommendedCadrCfm = Math.max(6, Math.round(recommendedCadrM3h / 1.699));
+  const inputWarning = hadInvalidInput
+    ? language === 'hi'
+      ? `अमान्य कमरे का आकार या संख्या सुरक्षित सीमा (${INDOOR_ROOM_MIN_SQFT}–${INDOOR_ROOM_MAX_SQFT} sq ft, ${INDOOR_OCCUPANTS_MIN}–${INDOOR_OCCUPANTS_MAX} लोग) में समायोजित की गई है।`
+      : `Out-of-range or invalid room inputs were clamped to safe bounds (${INDOOR_ROOM_MIN_SQFT}–${INDOOR_ROOM_MAX_SQFT} sq ft, ${INDOOR_OCCUPANTS_MIN}–${INDOOR_OCCUPANTS_MAX} occupants).`
+    : undefined;
 
   if (language === 'hi') {
     let priorityStrategy = '';
@@ -283,6 +338,7 @@ export function calculateIndoorRecommendation(
       priorityStrategy,
       ventilationDirective,
       actionSteps,
+      inputWarning,
     };
   }
 
@@ -328,5 +384,6 @@ export function calculateIndoorRecommendation(
     priorityStrategy,
     ventilationDirective,
     actionSteps,
+    inputWarning,
   };
 }

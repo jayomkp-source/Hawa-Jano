@@ -56,7 +56,7 @@ export const IndoorCalculator: React.FC<IndoorCalculatorProps> = ({
         <div className="lg:col-span-5 space-y-4">
           <div>
             <div className="flex justify-between text-xs mb-1.5">
-              <label htmlFor="calc-room-size" className="font-mono uppercase text-neutral-500">
+              <label htmlFor="calc-room-size" className="font-mono uppercase text-neutral-600 dark:text-slate-300">
                 {t('indoor.roomSize')}
               </label>
               <span className="font-mono font-bold tabular-nums">
@@ -77,7 +77,7 @@ export const IndoorCalculator: React.FC<IndoorCalculatorProps> = ({
 
           <div>
             <div className="flex justify-between text-xs mb-1.5">
-              <label htmlFor="calc-occupants" className="font-mono uppercase text-neutral-500 dark:text-neutral-400">
+              <label htmlFor="calc-occupants" className="font-mono uppercase text-neutral-600 dark:text-slate-300">
                 {t('indoor.occupants')}
               </label>
               <span className="font-mono font-bold tabular-nums">
@@ -99,7 +99,7 @@ export const IndoorCalculator: React.FC<IndoorCalculatorProps> = ({
           <div>
             <label
               htmlFor="calc-filtration"
-              className="block text-xs font-mono uppercase text-neutral-500 dark:text-neutral-400 mb-1.5"
+              className="block text-xs font-mono uppercase text-neutral-600 dark:text-slate-300 mb-1.5"
             >
               {t('indoor.filtrationSetup')}
             </label>
@@ -123,7 +123,7 @@ export const IndoorCalculator: React.FC<IndoorCalculatorProps> = ({
           <div>
             <label
               htmlFor="calc-budget"
-              className="block text-xs font-mono uppercase text-neutral-500 dark:text-neutral-400 mb-1.5"
+              className="block text-xs font-mono uppercase text-neutral-600 dark:text-slate-300 mb-1.5"
             >
               {t('indoor.availableBudget')}
             </label>
@@ -167,6 +167,15 @@ export const IndoorCalculator: React.FC<IndoorCalculatorProps> = ({
               </div>
             </div>
           </div>
+
+          {result.inputWarning && (
+            <div
+              role="status"
+              className="border border-amber-500 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+            >
+              {result.inputWarning}
+            </div>
+          )}
 
           <div>
             <div className="text-xs font-mono uppercase text-cyan-700 dark:text-cyan-400">

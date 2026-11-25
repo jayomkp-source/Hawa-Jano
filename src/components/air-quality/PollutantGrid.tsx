@@ -88,7 +88,7 @@ export const PollutantGrid: React.FC<PollutantGridProps> = ({ pollutants }) => {
                   {item.key}
                 </span>
               </span>
-              <span className="text-[11px] font-mono text-neutral-400 dark:text-slate-400">
+              <span className="text-[11px] font-mono text-neutral-600 dark:text-slate-400">
                 {item.unit}
               </span>
             </div>
@@ -97,7 +97,7 @@ export const PollutantGrid: React.FC<PollutantGridProps> = ({ pollutants }) => {
             </div>
             <div className="mt-2 pt-2 border-t border-[#DADADA] dark:border-[#222B3A]">
               <div className="text-[11px] text-neutral-600 dark:text-slate-300">{item.note}</div>
-              <div className="text-[10px] font-mono text-neutral-400 dark:text-slate-400 mt-0.5">
+              <div className="text-[10px] font-mono text-neutral-600 dark:text-slate-400 mt-0.5">
                 {item.refLimit}
               </div>
             </div>

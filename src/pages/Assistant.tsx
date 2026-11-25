@@ -131,8 +131,18 @@ export const Assistant: React.FC = () => {
   }, [language, chatMessages, setChatMessages, t]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    bottomRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
   }, [chatMessages, streaming]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const sendMessage = async (textToSend: string) => {
     const trimmed = textToSend.trim();
@@ -310,7 +320,13 @@ export const Assistant: React.FC = () => {
       </div>
 
       {/* Chat Messages Viewport */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#FAFAFA] dark:bg-[#070A0F]">
+      <div
+        role="log"
+        tabIndex={0}
+        aria-live="polite"
+        aria-label={t('assistant.title')}
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#FAFAFA] dark:bg-[#070A0F] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-600 dark:focus-visible:ring-purple-400"
+      >
         {chatMessages.map((msg, idx) => {
           const isUser = msg.role === 'user';
           return (
@@ -389,7 +405,10 @@ export const Assistant: React.FC = () => {
       </div>
 
       {error && (
-        <div className="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-600 text-xs text-red-700 dark:text-red-300">
+        <div
+          role="alert"
+          className="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-600 text-xs text-red-700 dark:text-red-300"
+        >
           {error}
         </div>
       )}

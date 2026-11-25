@@ -13,7 +13,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
 import {
-  LOCATION_ERROR_MESSAGES,
   requestBrowserLocation,
   searchLocations,
 } from '../../services/airQualityService';
@@ -25,6 +24,7 @@ import type {
   LifestyleRole,
   LocationData,
 } from '../../types';
+import { mapLocationErrorMessage } from '../../utils/errorHelpers';
 
 const LIFESTYLE_KEYS: LifestyleRole[] = [
   'parent',
@@ -60,17 +60,6 @@ export const OnboardingView: React.FC = () => {
   const [diet, setDiet] = useState<DietPreference>(profile.preferences.diet);
   const [budget, setBudget] = useState<BudgetPreference>(profile.preferences.budget);
 
-  const mapLocError = (err: unknown): string => {
-    const msg = err instanceof Error ? err.message : '';
-    if (msg === LOCATION_ERROR_MESSAGES.INVALID_PIN) return t('modals.invalidPin');
-    if (msg === LOCATION_ERROR_MESSAGES.NETWORK) return t('modals.networkError');
-    if (msg === LOCATION_ERROR_MESSAGES.LOCATION_SERVICE) return t('modals.locationSearchError');
-    if (!msg || /unexpected token|is not valid json|<!doctype|<html/i.test(msg)) {
-      return t('modals.locationSearchError');
-    }
-    return msg;
-  };
-
   const handleGeolocation = async () => {
     setLocLoading(true);
     setLocError(null);
@@ -78,7 +67,7 @@ export const OnboardingView: React.FC = () => {
       const loc = await requestBrowserLocation();
       setLocalLocation(loc);
     } catch (err) {
-      setLocError(mapLocError(err));
+      setLocError(mapLocationErrorMessage(err, t));
     } finally {
       setLocLoading(false);
     }
@@ -102,7 +91,7 @@ export const OnboardingView: React.FC = () => {
       }
     } catch (err) {
       setSearchResults([]);
-      setLocError(mapLocError(err));
+      setLocError(mapLocationErrorMessage(err, t));
     } finally {
       setLocLoading(false);
     }
@@ -238,7 +227,11 @@ export const OnboardingView: React.FC = () => {
               </button>
 
               <form onSubmit={handleSearchCity} className="flex gap-2">
+                <label htmlFor="onboarding-city-input" className="sr-only">
+                  {t('onboarding.searchPlaceholder')}
+                </label>
                 <input
+                  id="onboarding-city-input"
                   type="text"
                   value={cityQuery}
                   onChange={(e) => {

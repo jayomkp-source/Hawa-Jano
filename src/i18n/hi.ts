@@ -45,6 +45,7 @@ export const hi = {
     na: 'उपलब्ध नहीं',
     all: 'सभी',
     estimate: 'अनुमान',
+    skipToContent: 'मुख्य सामग्री पर जाएं',
   },
   scale: {
     IN_NAQI: 'भारतीय राष्ट्रीय AQI (CPCB)',
@@ -101,6 +102,8 @@ export const hi = {
     liveUnavailableTitle: 'लाइव वायु गुणवत्ता डेटा अभी उपलब्ध नहीं है।',
     showingCached: '{{time}} ({{location}}) की अंतिम संग्रहित रीडिंग दिखाई जा रही है।',
     noFabricated: 'अभी वायु गुणवत्ता फ़ीड से संपर्क नहीं हो पा रहा है। कोई मनगढ़ंत मान नहीं दिखाया गया है।',
+    staleTitle: 'वायु गुणवत्ता रीडिंग पुरानी हो सकती है',
+    staleDesc: 'नवीनतम उपलब्ध माप {{time}} ({{location}}) का है। नई रीडिंग जांचने के लिए रीफ़्रेश करें।',
   },
   onboarding: {
     skipSetup: 'सेटअप छोड़ें',

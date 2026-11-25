@@ -45,6 +45,7 @@ export const en = {
     na: 'N/A',
     all: 'All',
     estimate: 'Est.',
+    skipToContent: 'Skip to main content',
   },
   scale: {
     IN_NAQI: 'Indian National AQI (CPCB)',
@@ -101,6 +102,8 @@ export const en = {
     liveUnavailableTitle: 'Live air quality data is currently unavailable.',
     showingCached: 'Showing your last cached reading from {{time}} ({{location}}).',
     noFabricated: 'Unable to reach the air quality feed right now. No fabricated values are displayed.',
+    staleTitle: 'Air quality reading may be outdated',
+    staleDesc: 'The latest available measurement is from {{time}} ({{location}}). Refresh to check for newer readings.',
   },
   onboarding: {
     skipSetup: 'Skip Setup',

@@ -110,7 +110,11 @@ export const IndoorAir: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="tablist">
+          <div
+            className="flex border border-[#DADADA] dark:border-[#222B3A]"
+            role="tablist"
+            aria-label={t('indoor.checklistTitle')}
+          >
             {[
               {
                 id: 'living-room',

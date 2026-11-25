@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
@@ -24,6 +24,17 @@ export const ProfileSettingsModal: React.FC = () => {
     setLanguage,
   } = useApp();
 
+  useEffect(() => {
+    if (!isProfileModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsProfileModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isProfileModalOpen, setIsProfileModalOpen]);
+
   if (!isProfileModalOpen) return null;
 
   return (
@@ -32,6 +43,11 @@ export const ProfileSettingsModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setIsProfileModalOpen(false);
+        }
+      }}
     >
       <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-blue-600 dark:border-t-blue-400 p-6">
         <div className="flex items-start justify-between border-b border-[#DADADA] dark:border-[#222B3A] pb-4">
@@ -104,10 +120,14 @@ export const ProfileSettingsModal: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-1.5">
+              <label
+                htmlFor="profile-preferred-scale"
+                className="block text-xs font-mono uppercase tracking-wider text-neutral-600 dark:text-slate-400 mb-1.5"
+              >
                 {t('modals.preferredScale')}
               </label>
               <select
+                id="profile-preferred-scale"
                 value={profile.preferredScale}
                 onChange={(e) =>
                   updateProfile({ preferredScale: e.target.value as 'auto' | AqiScale })
@@ -121,10 +141,14 @@ export const ProfileSettingsModal: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-1.5">
+              <label
+                htmlFor="profile-lifestyle-role"
+                className="block text-xs font-mono uppercase tracking-wider text-neutral-600 dark:text-slate-400 mb-1.5"
+              >
                 {t('modals.lifestyleRole')}
               </label>
               <select
+                id="profile-lifestyle-role"
                 value={profile.lifestyle}
                 onChange={(e) => updateProfile({ lifestyle: e.target.value as LifestyleRole })}
                 className="w-full px-3 py-2 bg-white dark:bg-[#151C28] border border-[#DADADA] dark:border-[#222B3A] text-sm"
@@ -140,10 +164,14 @@ export const ProfileSettingsModal: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-1.5">
+              <label
+                htmlFor="profile-commute-mode"
+                className="block text-xs font-mono uppercase tracking-wider text-neutral-600 dark:text-slate-400 mb-1.5"
+              >
                 {t('modals.commuteMode')}
               </label>
               <select
+                id="profile-commute-mode"
                 value={profile.preferences.commuteMode}
                 onChange={(e) =>
                   updateProfile((prev) => ({
@@ -164,10 +192,14 @@ export const ProfileSettingsModal: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-1.5">
+              <label
+                htmlFor="profile-budget-pref"
+                className="block text-xs font-mono uppercase tracking-wider text-neutral-600 dark:text-slate-400 mb-1.5"
+              >
                 {t('modals.budgetPref')}
               </label>
               <select
+                id="profile-budget-pref"
                 value={profile.preferences.budget}
                 onChange={(e) =>
                   updateProfile((prev) => ({
@@ -187,10 +219,14 @@ export const ProfileSettingsModal: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-1.5">
+              <label
+                htmlFor="profile-food-pref"
+                className="block text-xs font-mono uppercase tracking-wider text-neutral-600 dark:text-slate-400 mb-1.5"
+              >
                 {t('modals.foodPref')}
               </label>
               <select
+                id="profile-food-pref"
                 value={profile.preferences.diet}
                 onChange={(e) =>
                   updateProfile((prev) => ({
@@ -210,10 +246,14 @@ export const ProfileSettingsModal: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-1.5">
+              <label
+                htmlFor="profile-family-members"
+                className="block text-xs font-mono uppercase tracking-wider text-neutral-600 dark:text-slate-400 mb-1.5"
+              >
                 {t('modals.familyMembers')}
               </label>
               <input
+                id="profile-family-members"
                 type="number"
                 min={1}
                 max={20}

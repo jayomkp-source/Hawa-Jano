@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, LocateFixed, MapPin, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
@@ -8,6 +8,7 @@ import {
   searchLocations,
 } from '../../services/airQualityService';
 import type { GeocodeResult } from '../../types';
+import { mapLocationErrorMessage } from '../../utils/errorHelpers';
 
 export const LocationSelectorModal: React.FC = () => {
   const { t } = useTranslation();
@@ -19,18 +20,18 @@ export const LocationSelectorModal: React.FC = () => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isLocationModalOpen) return null;
+  useEffect(() => {
+    if (!isLocationModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsLocationModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isLocationModalOpen, setIsLocationModalOpen]);
 
-  const mapSearchError = (err: unknown): string => {
-    const msg = err instanceof Error ? err.message : '';
-    if (msg === LOCATION_ERROR_MESSAGES.INVALID_PIN) return t('modals.invalidPin');
-    if (msg === LOCATION_ERROR_MESSAGES.NETWORK) return t('modals.networkError');
-    if (msg === LOCATION_ERROR_MESSAGES.LOCATION_SERVICE) return t('modals.locationSearchError');
-    if (!msg || /unexpected token|is not valid json|<!doctype|<html/i.test(msg)) {
-      return t('modals.locationSearchError');
-    }
-    return msg;
-  };
+  if (!isLocationModalOpen) return null;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +56,7 @@ export const LocationSelectorModal: React.FC = () => {
       }
     } catch (err) {
       setResults([]);
-      setError(mapSearchError(err));
+      setError(mapLocationErrorMessage(err, t));
     } finally {
       setSearching(false);
     }
@@ -115,6 +116,11 @@ export const LocationSelectorModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="location-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setIsLocationModalOpen(false);
+        }
+      }}
     >
       <div className="w-full max-w-lg bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-sky-600 dark:border-t-sky-400 p-6">
         <div className="flex items-start justify-between gap-4 border-b border-[#DADADA] dark:border-[#222B3A] pb-4">

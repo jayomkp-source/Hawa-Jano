@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award,
   Building2,
@@ -41,6 +41,15 @@ export const Community: React.FC = () => {
   const initiatives = useMemo(() => getCommunityInitiatives(language), [language]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   const visible = useMemo(() => {
     if (categoryFilter === 'all') return initiatives;
@@ -53,7 +62,13 @@ export const Community: React.FC = () => {
     try {
       await navigator.clipboard.writeText(`${initiative.title}\n\n${initiative.shareMessage}`);
       setCopiedId(initiative.id);
-      setTimeout(() => setCopiedId(null), 2500);
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = setTimeout(() => {
+        setCopiedId(null);
+        copyTimerRef.current = null;
+      }, 2500);
     } catch {
       // Ignore clipboard failure
     }
@@ -89,7 +104,11 @@ export const Community: React.FC = () => {
       </div>
 
       {/* Category Filter Bar */}
-      <div className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0E131B] w-fit">
+      <div
+        className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0E131B] w-fit"
+        role="tablist"
+        aria-label={t('community.title')}
+      >
         {FILTER_TABS.map((tab) => {
           const Icon = tab.icon;
           const active = categoryFilter === tab.id;
@@ -97,12 +116,14 @@ export const Community: React.FC = () => {
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => setCategoryFilter(tab.id)}
               className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 transition-colors ${
                 active ? tab.active : 'hover:bg-[#F3F3F3] dark:hover:bg-[#151C28]'
               }`}
             >
-              <Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : tab.color}`} />
+              <Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : tab.color}`} aria-hidden="true" />
               {t(`community.filters.${tab.id}`)}
             </button>
           );

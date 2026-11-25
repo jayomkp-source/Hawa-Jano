@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ImpactExplainerPanel } from '../components/eco-alternatives/ImpactExplainerPanel';
 import { useApp } from '../contexts/AppContext';
 import { getEcoAlternatives } from '../data/ecoAndCommunityData';
+import { calculateEcoImpactSummary, formatEcoMoneyEstimate } from '../utils/ecoImpact';
 
 export const EcoAlternatives: React.FC = () => {
   const { t } = useTranslation();
@@ -32,14 +33,10 @@ export const EcoAlternatives: React.FC = () => {
   const selectedItem =
     ecoAlternatives.find((item) => item.id === selectedId) || ecoAlternatives[0];
 
-  const totals = useMemo(() => {
-    const committed = ecoAlternatives.filter((item) => committedEcoIds.includes(item.id));
-    return {
-      weeklyKg: committed.reduce((s, i) => s + i.estimatedEmissionsDeltaKgPerWeek, 0),
-      monthlyInr: committed.reduce((s, i) => s + (i.estimatedMoneySavedPerMonthInr || 0), 0),
-      monthlyUsd: committed.reduce((s, i) => s + (i.estimatedMoneySavedPerMonthUsd || 0), 0),
-    };
-  }, [ecoAlternatives, committedEcoIds]);
+  const totals = useMemo(
+    () => calculateEcoImpactSummary(ecoAlternatives, committedEcoIds),
+    [ecoAlternatives, committedEcoIds]
+  );
 
   const tabs = [
     {
@@ -83,7 +80,11 @@ export const EcoAlternatives: React.FC = () => {
           <p className="text-xs text-neutral-500 dark:text-slate-400 mt-1">{t('eco.subtitle')}</p>
         </div>
 
-        <div className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0E131B]" role="tablist">
+        <div
+          className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0E131B]"
+          role="tablist"
+          aria-label={t('eco.title')}
+        >
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const active = categoryFilter === tab.id;
@@ -121,13 +122,7 @@ export const EcoAlternatives: React.FC = () => {
         {visibleItems.map((item) => {
           const isCommitted = committedEcoIds.includes(item.id);
           const isSelected = selectedItem.id === item.id;
-          const moneyDisplay = useInr
-            ? item.estimatedMoneySavedPerMonthInr
-              ? `~₹${item.estimatedMoneySavedPerMonthInr}/mo (${t('common.estimate')})`
-              : '—'
-            : item.estimatedMoneySavedPerMonthUsd
-              ? `~$${item.estimatedMoneySavedPerMonthUsd}/mo (${t('common.estimate')})`
-              : '—';
+          const moneyDisplay = formatEcoMoneyEstimate(item, useInr, t('common.estimate'));
 
           return (
             <article

@@ -69,17 +69,21 @@ export async function parseApiJson<T>(
   return parsed as T;
 }
 
-async function fetchWithNetworkHandling(url: string): Promise<Response> {
+async function fetchWithNetworkHandling(url: string, signal?: AbortSignal): Promise<Response> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     throw new Error(LOCATION_ERROR_MESSAGES.NETWORK);
   }
   try {
     return await fetch(url, {
+      signal,
       headers: {
         Accept: 'application/json',
       },
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw err;
+    }
     throw new Error(LOCATION_ERROR_MESSAGES.NETWORK);
   }
 }
@@ -98,10 +102,11 @@ export function validateLocationSearchInput(query: string): string {
   return trimmed;
 }
 
-export async function searchLocations(query: string): Promise<GeocodeResult[]> {
+export async function searchLocations(query: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
   const validated = validateLocationSearchInput(query);
   const res = await fetchWithNetworkHandling(
-    `/api/geocode?q=${encodeURIComponent(validated)}`
+    `/api/geocode?q=${encodeURIComponent(validated)}`,
+    signal
   );
   const data = await parseApiJson<{ results?: GeocodeResult[] }>(
     res,
@@ -112,10 +117,12 @@ export async function searchLocations(query: string): Promise<GeocodeResult[]> {
 
 export async function reverseGeocodeCoords(
   latitude: number,
-  longitude: number
+  longitude: number,
+  signal?: AbortSignal
 ): Promise<GeocodeResult> {
   const res = await fetchWithNetworkHandling(
-    `/api/geocode?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}`
+    `/api/geocode?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}`,
+    signal
   );
   const data = await parseApiJson<{ results?: GeocodeResult[] }>(
     res,
@@ -202,7 +209,28 @@ export async function requestBrowserLocation(): Promise<LocationData> {
   };
 }
 
-export async function fetchLiveAirQuality(location: LocationData): Promise<AirQualitySnapshot> {
+export function validateAirQualitySnapshot(data: unknown): AirQualitySnapshot {
+  if (!data || typeof data !== 'object') {
+    throw new Error(LOCATION_ERROR_MESSAGES.STATION_UNAVAILABLE);
+  }
+  const snap = data as Partial<AirQualitySnapshot>;
+  if (
+    !snap.pollutants ||
+    !snap.weather ||
+    !snap.scales?.IN_NAQI ||
+    !snap.scales?.US_EPA ||
+    typeof snap.measuredAt !== 'string' ||
+    typeof snap.source !== 'string'
+  ) {
+    throw new Error(LOCATION_ERROR_MESSAGES.STATION_UNAVAILABLE);
+  }
+  return snap as AirQualitySnapshot;
+}
+
+export async function fetchLiveAirQuality(
+  location: LocationData,
+  signal?: AbortSignal
+): Promise<AirQualitySnapshot> {
   const params = new URLSearchParams({
     lat: String(location.latitude),
     lon: String(location.longitude),
@@ -210,11 +238,12 @@ export async function fetchLiveAirQuality(location: LocationData): Promise<AirQu
     countryCode: location.countryCode || '',
   });
 
-  const res = await fetchWithNetworkHandling(`/api/air-quality?${params.toString()}`);
-  const data = await parseApiJson<AirQualitySnapshot>(
+  const res = await fetchWithNetworkHandling(`/api/air-quality?${params.toString()}`, signal);
+  const raw = await parseApiJson<unknown>(
     res,
     LOCATION_ERROR_MESSAGES.STATION_UNAVAILABLE
   );
+  const data = validateAirQualitySnapshot(raw);
 
   saveCachedAirQuality(data);
   return data;
@@ -232,7 +261,7 @@ export function loadCachedAirQuality(location?: LocationData | null): AirQuality
   try {
     const raw = localStorage.getItem(AQ_CACHE_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as AirQualitySnapshot;
+    const parsed = validateAirQualitySnapshot(JSON.parse(raw));
     if (location) {
       const distLat = Math.abs(parsed.latitude - location.latitude);
       const distLon = Math.abs(parsed.longitude - location.longitude);
@@ -248,7 +277,8 @@ export function loadCachedAirQuality(location?: LocationData | null): AirQuality
 
 export async function fetchHistoricalAirQuality(
   location: LocationData,
-  days: 7 | 30
+  days: 7 | 30,
+  signal?: AbortSignal
 ): Promise<HistoricalAirQualityResponse> {
   const params = new URLSearchParams({
     lat: String(location.latitude),
@@ -257,7 +287,10 @@ export async function fetchHistoricalAirQuality(
     name: location.name,
   });
 
-  const res = await fetchWithNetworkHandling(`/api/air-quality/history?${params.toString()}`);
+  const res = await fetchWithNetworkHandling(
+    `/api/air-quality/history?${params.toString()}`,
+    signal
+  );
   return await parseApiJson<HistoricalAirQualityResponse>(
     res,
     'Historical air quality data is currently unavailable.'

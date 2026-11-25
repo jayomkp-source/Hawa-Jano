@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   Bell,
@@ -123,6 +123,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileMenuOpen]);
+
   const handleNavClick = (tab: NavTab) => {
     setActiveTab(tab);
     setMobileMenuOpen(false);
@@ -130,6 +141,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-[#070A0F] text-[#080808] dark:text-[#F8FAFC] flex flex-col lg:flex-row">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-[#080808] focus:text-white dark:focus:bg-white dark:focus:text-[#080808] focus:text-xs focus:font-semibold"
+      >
+        {t('common.skipToContent')}
+      </a>
       {/* Desktop Sharp Vertical Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 border-r border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0B0F17] lg:sticky lg:top-0 lg:h-screen">
         <div className="p-5 border-b border-[#DADADA] dark:border-[#222B3A] flex items-center gap-3">
@@ -191,7 +208,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               type="button"
               onClick={toggleTheme}
               className="py-2 px-2.5 border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#151C28] text-xs font-medium flex items-center justify-center gap-1.5 hover:border-[#080808] dark:hover:border-cyan-400 transition-colors"
-              aria-label="Toggle color theme"
+              aria-label={`${theme === 'light' ? t('nav.darkMode') : t('nav.lightMode')} — Toggle color theme`}
             >
               {theme === 'light' ? (
                 <>
@@ -240,7 +257,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               type="button"
               onClick={() => setIsLocationModalOpen(true)}
               className="flex items-center gap-2 px-2.5 py-1.5 border border-[#DADADA] dark:border-[#222B3A] dark:bg-[#111723] hover:border-blue-600 dark:hover:border-blue-400 text-xs min-w-0 transition-colors"
-              aria-label={t('nav.changeLocation')}
+              aria-label={`${profile.location ? profile.location.name : t('nav.selectLocation')} — ${t('nav.changeLocation')}`}
             >
               <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               <span className="truncate max-w-[110px] sm:max-w-[200px] font-medium">
@@ -288,7 +305,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               type="button"
               onClick={toggleTheme}
               className="p-2 border border-[#DADADA] dark:border-[#222B3A] dark:bg-[#111723] hover:border-amber-500 dark:hover:border-amber-400 transition-colors flex items-center gap-1.5 text-xs font-medium"
-              aria-label="Toggle color theme"
+              aria-label={`${theme === 'light' ? t('nav.darkMode') : t('nav.lightMode')} — Toggle color theme`}
               title={theme === 'light' ? t('nav.darkModeFull') : t('nav.lightModeFull')}
             >
               {theme === 'light' ? (
@@ -326,7 +343,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               type="button"
               onClick={() => setIsNotificationsOpen(true)}
               className="relative p-2 border border-[#DADADA] dark:border-[#222B3A] dark:bg-[#111723] hover:border-amber-600 dark:hover:border-amber-400 transition-colors"
-              aria-label={`Notifications (${notifications.length})`}
+              aria-label={
+                notifications.length > 0
+                  ? `${notifications.length} Notifications`
+                  : 'Notifications'
+              }
             >
               <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               {notifications.length > 0 && (
@@ -359,7 +380,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
         {/* Mobile Navigation Slide-Over Drawer */}
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden flex bg-black/70">
+          <div
+            className="fixed inset-0 z-50 lg:hidden flex bg-black/70"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile navigation"
+          >
             <div className="w-72 max-w-[85vw] bg-white dark:bg-[#0B0F17] border-r border-[#DADADA] dark:border-[#222B3A] flex flex-col h-full">
               <div className="p-4 border-b border-[#DADADA] dark:border-[#222B3A] flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -376,7 +402,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 </button>
               </div>
 
-              <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
+              <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto" aria-label="Mobile navigation">
                 {NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -411,10 +437,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                     <Languages className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     {t('nav.languageLabel')}
                   </span>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1" role="group" aria-label={t('nav.languageLabel')}>
                     <button
                       type="button"
                       onClick={() => setLanguage('en')}
+                      aria-pressed={language === 'en'}
                       className={`px-2 py-0.5 font-mono ${
                         language === 'en' ? 'bg-blue-600 text-white' : ''
                       }`}
@@ -424,6 +451,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                     <button
                       type="button"
                       onClick={() => setLanguage('hi')}
+                      aria-pressed={language === 'hi'}
                       className={`px-2 py-0.5 ${
                         language === 'hi' ? 'bg-orange-600 text-white' : ''
                       }`}
@@ -459,12 +487,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 </div>
               </div>
             </div>
-            <div className="flex-1" onClick={() => setMobileMenuOpen(false)} />
+            <div className="flex-1" onClick={() => setMobileMenuOpen(false)} aria-hidden="true" />
           </div>
         )}
 
         {/* Active Page Container */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1360px] w-full mx-auto">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1360px] w-full mx-auto focus:outline-none"
+        >
           {children}
         </main>
       </div>

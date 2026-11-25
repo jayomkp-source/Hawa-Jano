@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Bell, Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
@@ -17,6 +17,17 @@ export const NotificationsDrawer: React.FC = () => {
     setActiveTab,
   } = useApp();
 
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsNotificationsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isNotificationsOpen, setIsNotificationsOpen]);
+
   if (!isNotificationsOpen) return null;
 
   const severityStyles: Record<string, string> = {
@@ -32,6 +43,11 @@ export const NotificationsDrawer: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="notifications-drawer-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          setIsNotificationsOpen(false);
+        }
+      }}
     >
       <div className="w-full max-w-md h-full bg-white dark:bg-[#0B0F17] border-l border-[#DADADA] dark:border-[#222B3A] flex flex-col">
         <div className="p-5 border-b border-[#DADADA] dark:border-[#222B3A] flex items-center justify-between">

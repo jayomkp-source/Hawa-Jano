@@ -136,7 +136,10 @@ export const DailyPlanner: React.FC = () => {
       <StatusAlertBanner />
 
       {routineError && (
-        <div className="border border-red-600 bg-red-50 dark:bg-red-950/30 p-4 text-xs text-red-700 dark:text-red-300">
+        <div
+          role="alert"
+          className="border border-red-600 bg-red-50 dark:bg-red-950/30 p-4 text-xs text-red-700 dark:text-red-300"
+        >
           {routineError}
         </div>
       )}
@@ -215,7 +218,11 @@ export const DailyPlanner: React.FC = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0E131B]" role="tablist">
+            <div
+              className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A] bg-white dark:bg-[#0E131B]"
+              role="tablist"
+              aria-label={t('planner.title')}
+            >
               {timeBlocks.map((tb) => {
                 const Icon = tb.icon;
                 const active = timeFilter === tb.id;

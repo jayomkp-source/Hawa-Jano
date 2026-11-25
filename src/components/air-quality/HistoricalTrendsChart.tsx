@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Calendar, LineChart as LineChartIcon, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -45,28 +45,47 @@ export const HistoricalTrendsChart: React.FC = () => {
   const [historyData, setHistoryData] = useState<HistoricalAirQualityResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const requestSeqRef = useRef(0);
 
   const loadHistory = useCallback(async () => {
+    abortRef.current?.abort();
+
     if (!profile.location) {
       setHistoryData(null);
       setError(null);
+      setLoading(false);
       return;
     }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const seq = ++requestSeqRef.current;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchHistoricalAirQuality(profile.location, days);
+      const res = await fetchHistoricalAirQuality(profile.location, days, controller.signal);
+      if (seq !== requestSeqRef.current) return;
       setHistoryData(res);
     } catch (err) {
+      if ((err as Error).name === 'AbortError' || seq !== requestSeqRef.current) {
+        return;
+      }
       setError(err instanceof Error ? err.message : t('airQuality.historyUnavailable'));
       setHistoryData(null);
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [profile.location, days, t]);
 
   useEffect(() => {
     void loadHistory();
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [loadHistory]);
 
   const chartRows = useMemo(() => {
@@ -150,6 +169,7 @@ export const HistoricalTrendsChart: React.FC = () => {
           <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label="Time period">
             <button
               type="button"
+              aria-pressed={days === 7}
               onClick={() => setDays(7)}
               className={`px-3 py-1.5 text-xs font-mono font-semibold transition-colors ${
                 days === 7
@@ -161,6 +181,7 @@ export const HistoricalTrendsChart: React.FC = () => {
             </button>
             <button
               type="button"
+              aria-pressed={days === 30}
               onClick={() => setDays(30)}
               className={`px-3 py-1.5 text-xs font-mono font-semibold transition-colors ${
                 days === 30
@@ -176,6 +197,7 @@ export const HistoricalTrendsChart: React.FC = () => {
           <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label="Aggregation">
             <button
               type="button"
+              aria-pressed={statMode === 'avg'}
               onClick={() => setStatMode('avg')}
               className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 statMode === 'avg'
@@ -187,6 +209,7 @@ export const HistoricalTrendsChart: React.FC = () => {
             </button>
             <button
               type="button"
+              aria-pressed={statMode === 'peak'}
               onClick={() => setStatMode('peak')}
               className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
                 statMode === 'peak'
@@ -202,6 +225,7 @@ export const HistoricalTrendsChart: React.FC = () => {
           <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label="Chart type">
             <button
               type="button"
+              aria-pressed={chartKind === 'line'}
               onClick={() => setChartKind('line')}
               className={`px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 transition-colors ${
                 chartKind === 'line'
@@ -209,11 +233,12 @@ export const HistoricalTrendsChart: React.FC = () => {
                   : 'hover:bg-[#F3F3F3] dark:hover:bg-[#151C28]'
               }`}
             >
-              <LineChartIcon className="w-3.5 h-3.5" />
+              <LineChartIcon className="w-3.5 h-3.5" aria-hidden="true" />
               {t('airQuality.lineChart')}
             </button>
             <button
               type="button"
+              aria-pressed={chartKind === 'bar'}
               onClick={() => setChartKind('bar')}
               className={`px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 transition-colors ${
                 chartKind === 'bar'
@@ -221,7 +246,7 @@ export const HistoricalTrendsChart: React.FC = () => {
                   : 'hover:bg-[#F3F3F3] dark:hover:bg-[#151C28]'
               }`}
             >
-              <BarChart3 className="w-3.5 h-3.5" />
+              <BarChart3 className="w-3.5 h-3.5" aria-hidden="true" />
               {t('airQuality.barChart')}
             </button>
           </div>
@@ -230,7 +255,11 @@ export const HistoricalTrendsChart: React.FC = () => {
 
       {/* Vibrant Color-Coded Pollutant Tabs + Period Summary */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A]" role="tablist">
+        <div
+          className="flex flex-wrap border border-[#DADADA] dark:border-[#222B3A]"
+          role="tablist"
+          aria-label="Pollutant trend series"
+        >
           {(
             [
               {
@@ -299,7 +328,7 @@ export const HistoricalTrendsChart: React.FC = () => {
                 <span>
                   {t('airQuality.periodAvg')}: <strong>{dualStats.pm25.avg}</strong>
                 </span>
-                <span className="text-neutral-500 dark:text-slate-400">
+                <span className="text-neutral-600 dark:text-slate-400">
                   Peak {dualStats.pm25.peak} µg/m³
                 </span>
               </div>
@@ -311,7 +340,7 @@ export const HistoricalTrendsChart: React.FC = () => {
                 <span>
                   {t('airQuality.periodAvg')}: <strong>{dualStats.no2.avg}</strong>
                 </span>
-                <span className="text-neutral-500 dark:text-slate-400">
+                <span className="text-neutral-600 dark:text-slate-400">
                   Peak {dualStats.no2.peak} µg/m³
                 </span>
               </div>
@@ -344,14 +373,17 @@ export const HistoricalTrendsChart: React.FC = () => {
           {t('airQuality.historyLoading')}
         </div>
       ) : error ? (
-        <div className="h-64 flex flex-col items-center justify-center gap-3 border border-red-600 bg-red-50 dark:bg-red-950/30 p-4 text-center">
+        <div
+          role="alert"
+          className="h-64 flex flex-col items-center justify-center gap-3 border border-red-600 bg-red-50 dark:bg-red-950/30 p-4 text-center"
+        >
           <p className="text-xs text-red-700 dark:text-red-300">{error}</p>
           <button
             type="button"
             onClick={() => void loadHistory()}
             className="px-3 py-1.5 border border-red-700 dark:border-red-400 text-xs font-semibold flex items-center gap-1.5 text-red-800 dark:text-red-200"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
             {t('common.retryLiveFeed')}
           </button>
         </div>
@@ -360,7 +392,11 @@ export const HistoricalTrendsChart: React.FC = () => {
           {t('airQuality.historyUnavailable')}
         </div>
       ) : (
-        <div className="h-80 w-full">
+        <div
+          className="h-80 w-full"
+          role="img"
+          aria-label={t('airQuality.historyTitle')}
+        >
           <ResponsiveContainer width="100%" height="100%">
             {chartKind === 'line' ? (
               <LineChart data={chartRows} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
