@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Activity,
   Bell,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import type { NavTab } from '../../types';
 
 const NAV_ITEMS: Array<{
@@ -122,17 +123,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMobileMenuOpen(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [mobileMenuOpen]);
+  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
+  const mobileDrawerRef = useModalFocus<HTMLDivElement>(mobileMenuOpen, closeMobileMenu);
 
   const handleNavClick = (tab: NavTab) => {
     setActiveTab(tab);
@@ -386,7 +378,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             aria-modal="true"
             aria-label="Mobile navigation"
           >
-            <div className="w-72 max-w-[85vw] bg-white dark:bg-[#0B0F17] border-r border-[#DADADA] dark:border-[#222B3A] flex flex-col h-full">
+            <div
+              ref={mobileDrawerRef}
+              tabIndex={-1}
+              className="w-72 max-w-[85vw] bg-white dark:bg-[#0B0F17] border-r border-[#DADADA] dark:border-[#222B3A] flex flex-col h-full focus:outline-none"
+            >
               <div className="p-4 border-b border-[#DADADA] dark:border-[#222B3A] flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Wind className="w-4 h-4 text-cyan-500 dark:text-cyan-400" />

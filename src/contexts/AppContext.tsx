@@ -67,11 +67,56 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   weatherChangeAlerts: true,
 };
 
+export function normalizeUserProfile(raw: unknown): UserProfile {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return DEFAULT_PROFILE;
+  }
+  const obj = raw as Partial<UserProfile>;
+  const rawHouse = (obj.household ?? {}) as Partial<UserProfile['household']>;
+  const rawPref = (obj.preferences ?? {}) as Partial<UserProfile['preferences']>;
+  const rawLoc = obj.location;
+  const validLoc =
+    rawLoc &&
+    typeof rawLoc === 'object' &&
+    typeof rawLoc.latitude === 'number' &&
+    typeof rawLoc.longitude === 'number' &&
+    typeof rawLoc.name === 'string'
+      ? rawLoc
+      : null;
+
+  return {
+    onboardingCompleted: Boolean(obj.onboardingCompleted),
+    displayName: typeof obj.displayName === 'string' ? obj.displayName : '',
+    location: validLoc,
+    preferredScale:
+      obj.preferredScale === 'IN_NAQI' || obj.preferredScale === 'US_EPA'
+        ? obj.preferredScale
+        : 'auto',
+    lifestyle: obj.lifestyle ?? DEFAULT_PROFILE.lifestyle,
+    household: {
+      familyMembers:
+        typeof rawHouse.familyMembers === 'number' && Number.isFinite(rawHouse.familyMembers)
+          ? Math.max(1, Math.min(30, Math.round(rawHouse.familyMembers)))
+          : DEFAULT_PROFILE.household.familyMembers,
+      hasChildren: Boolean(rawHouse.hasChildren),
+      hasElderly: Boolean(rawHouse.hasElderly),
+      hasPets: Boolean(rawHouse.hasPets),
+      typicalOutdoorActivity:
+        rawHouse.typicalOutdoorActivity ?? DEFAULT_PROFILE.household.typicalOutdoorActivity,
+    },
+    preferences: {
+      commuteMode: rawPref.commuteMode ?? DEFAULT_PROFILE.preferences.commuteMode,
+      diet: rawPref.diet ?? DEFAULT_PROFILE.preferences.diet,
+      budget: rawPref.budget ?? DEFAULT_PROFILE.preferences.budget,
+    },
+  };
+}
+
 const INITIAL_ASSISTANT_MESSAGE: ChatMessage = {
   id: 'welcome-msg',
   role: 'assistant',
   content:
-    "Hey! I'm your AIRWISE companion. Let's make your home and daily routine cleaner, safer, and more sustainable. Ask me anything in English, Hindi, or Hinglish—whether it's checking if a morning walk is safe or planning cleaner indoor air.",
+    "Hey! I'm your HAWA JANO companion. Let's make your home and daily routine cleaner, safer, and more sustainable. Ask me anything in English, Hindi, or Hinglish—whether it's checking if a morning walk is safe or planning cleaner indoor air.",
   timestamp: new Date().toISOString(),
 };
 
@@ -153,10 +198,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('airwise_theme_v1', 'light');
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
-  const [profile, setProfile] = useLocalStorage<UserProfile>(
+  const [rawProfile, setProfile] = useLocalStorage<UserProfile>(
     'airwise_user_profile_v1',
     DEFAULT_PROFILE
   );
+  const profile = useMemo(() => normalizeUserProfile(rawProfile), [rawProfile]);
 
   const [airQuality, setAirQuality] = useState<AirQualityState>({
     data: null,
@@ -233,7 +279,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateProfile = useCallback(
     (updater: Partial<UserProfile> | ((prev: UserProfile) => UserProfile)) => {
-      setProfile((prev) => (typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }));
+      setProfile((prev) => {
+        const normalizedPrev = normalizeUserProfile(prev);
+        return typeof updater === 'function' ? updater(normalizedPrev) : { ...normalizedPrev, ...updater };
+      });
     },
     [setProfile]
   );
@@ -241,7 +290,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setLocation = useCallback(
     (loc: LocationData) => {
       setProfile((prev) => ({
-        ...prev,
+        ...normalizeUserProfile(prev),
         location: loc,
       }));
     },
@@ -339,7 +388,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [activeAqiValue, activeScale]
   );
 
+  const routineAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      routineAbortRef.current?.abort();
+    };
+  }, []);
+
   const generateRoutine = useCallback(async () => {
+    routineAbortRef.current?.abort();
+    const controller = new AbortController();
+    routineAbortRef.current = controller;
+
     setRoutineLoading(true);
     setRoutineError(null);
     try {
@@ -348,15 +409,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         airQuality: effectiveSnapshot,
         activeScale,
         language,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       setRoutinePlan(plan);
       setCompletedRoutineIds([]);
     } catch (err) {
+      if ((err instanceof Error && err.name === 'AbortError') || controller.signal.aborted) {
+        return;
+      }
       setRoutineError(
         err instanceof Error ? err.message : 'Failed to generate personalized daily routine.'
       );
     } finally {
-      setRoutineLoading(false);
+      if (!controller.signal.aborted) {
+        setRoutineLoading(false);
+      }
     }
   }, [profile, effectiveSnapshot, activeScale, language, setRoutinePlan, setCompletedRoutineIds]);
 

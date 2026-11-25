@@ -47,7 +47,7 @@ export const IndoorCalculator: React.FC<IndoorCalculatorProps> = ({
           <Calculator className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
         </div>
         <div>
-          <h3 className="text-base font-bold">{t('indoor.calcTitle')}</h3>
+          <h2 className="text-base font-bold">{t('indoor.calcTitle')}</h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('indoor.calcSub')}</p>
         </div>
       </div>

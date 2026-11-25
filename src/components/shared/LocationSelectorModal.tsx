@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, LocateFixed, MapPin, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import {
+  formatLocationDetails,
+  isValidLocationSearchQuery,
   LOCATION_ERROR_MESSAGES,
   requestBrowserLocation,
   searchLocations,
@@ -20,34 +23,38 @@ export const LocationSelectorModal: React.FC = () => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const closeModal = useCallback(() => setIsLocationModalOpen(false), [setIsLocationModalOpen]);
+  const modalRef = useModalFocus<HTMLDivElement>(isLocationModalOpen, closeModal);
+
   useEffect(() => {
-    if (!isLocationModalOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsLocationModalOpen(false);
-      }
+    return () => {
+      searchAbortRef.current?.abort();
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isLocationModalOpen, setIsLocationModalOpen]);
+  }, []);
 
   if (!isLocationModalOpen) return null;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = query.trim();
-    if (!trimmed || (/^\d+$/.test(trimmed) && !/^\d{6}$/.test(trimmed)) || trimmed.length < 2) {
+    if (!isValidLocationSearchQuery(trimmed)) {
       setResults([]);
       setSelectedResult(null);
       setError(t('modals.invalidPin'));
       return;
     }
 
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     setSearching(true);
     setError(null);
     setSelectedResult(null);
     try {
-      const found = await searchLocations(trimmed);
+      const found = await searchLocations(trimmed, controller.signal);
+      if (controller.signal.aborted) return;
       setResults(found);
       if (found.length === 0) {
         setError(t('modals.noLocationMatch'));
@@ -55,10 +62,15 @@ export const LocationSelectorModal: React.FC = () => {
         setSelectedResult(found[0]);
       }
     } catch (err) {
+      if ((err instanceof Error && err.name === 'AbortError') || controller.signal.aborted) {
+        return;
+      }
       setResults([]);
       setError(mapLocationErrorMessage(err, t));
     } finally {
-      setSearching(false);
+      if (!controller.signal.aborted) {
+        setSearching(false);
+      }
     }
   };
 
@@ -97,19 +109,6 @@ export const LocationSelectorModal: React.FC = () => {
     setIsLocationModalOpen(false);
   };
 
-  const formatDetailsLine = (item: GeocodeResult): string => {
-    const parts = [
-      item.district && item.district !== item.city ? item.district : '',
-      item.region || '',
-      item.country || '',
-    ].filter(Boolean);
-    const joined = parts.join(', ');
-    if (item.pinCode) {
-      return joined ? `${joined} · PIN ${item.pinCode}` : `PIN ${item.pinCode}`;
-    }
-    return joined || '—';
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -122,7 +121,11 @@ export const LocationSelectorModal: React.FC = () => {
         }
       }}
     >
-      <div className="w-full max-w-lg bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-sky-600 dark:border-t-sky-400 p-6">
+      <div
+        ref={modalRef}
+        tabIndex={-1}
+        className="w-full max-w-lg bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-sky-600 dark:border-t-sky-400 p-6 focus:outline-none"
+      >
         <div className="flex items-start justify-between gap-4 border-b border-[#DADADA] dark:border-[#222B3A] pb-4">
           <div>
             <p className="text-xs font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400">
@@ -246,7 +249,7 @@ export const LocationSelectorModal: React.FC = () => {
                           <span className="truncate">{item.city || item.name}</span>
                         </div>
                         <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                          {formatDetailsLine(item)}
+                          {formatLocationDetails(item)}
                         </div>
                       </div>
                       <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 tabular-nums shrink-0">
@@ -267,7 +270,7 @@ export const LocationSelectorModal: React.FC = () => {
                       {selectedResult.name}
                     </div>
                     <div className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
-                      {formatDetailsLine(selectedResult)}
+                      {formatLocationDetails(selectedResult)}
                     </div>
                   </div>
                   <button

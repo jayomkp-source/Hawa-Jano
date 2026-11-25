@@ -113,7 +113,7 @@ function calcSubIndex(concentration: number | null, bps: Breakpoint[]): number |
   for (const bp of bps) {
     if (concentration <= bp.cHigh) {
       const ratio = (concentration - bp.cLow) / (bp.cHigh - bp.cLow);
-      return Math.round(bp.iLow + ratio * (bp.iHigh - bp.iLow));
+      return Math.max(bp.iLow, Math.round(bp.iLow + ratio * (bp.iHigh - bp.iLow)));
     }
   }
   const last = bps[bps.length - 1];

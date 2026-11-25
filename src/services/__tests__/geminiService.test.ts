@@ -183,5 +183,20 @@ describe('geminiService (Sections A & D)', () => {
         onChunk: () => {},
       })
     ).rejects.toThrow(/did not return a response/i);
+
+    // Pre-aborted AbortSignal throws AbortError immediately
+    const ac = new AbortController();
+    ac.abort();
+    await expect(
+      streamAssistantChat({
+        messages: [{ role: 'user', content: 'Aborted?' }],
+        profile: baseProfile,
+        airQuality: null,
+        activeScale: 'IN_NAQI',
+        language: 'en',
+        onChunk: () => {},
+        signal: ac.signal,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

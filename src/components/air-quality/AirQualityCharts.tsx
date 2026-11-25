@@ -94,9 +94,9 @@ export const AirQualityCharts: React.FC<AirQualityChartsProps> = ({ hourly, scal
             <Activity className="w-4 h-4 text-orange-600 dark:text-orange-400" />
           </span>
           <div>
-            <h3 className="text-base font-bold">
+            <h2 className="text-base font-bold">
               {t('airQuality.chart48Title', { metric: activeMeta.label })}
-            </h3>
+            </h2>
             <p className="text-xs text-neutral-500 dark:text-slate-400 mt-0.5">
               {t('airQuality.chart48Sub')}
             </p>

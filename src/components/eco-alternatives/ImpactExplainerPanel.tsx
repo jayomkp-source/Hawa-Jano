@@ -29,7 +29,7 @@ export const ImpactExplainerPanel: React.FC<ImpactExplainerPanelProps> = ({
           <span className="text-xs font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
             {t('eco.impactExplainer')}
           </span>
-          <h3 className="text-lg font-bold mt-0.5">{selected.title}</h3>
+          <h2 className="text-lg font-bold mt-0.5">{selected.title}</h2>
         </div>
         <div className="text-xs font-mono text-neutral-600 dark:text-neutral-300 tabular-nums">
           {t('eco.committedSwaps')}: <strong>{committedCount}</strong> · {t('common.estimate')}{' '}

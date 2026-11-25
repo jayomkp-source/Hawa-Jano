@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  formatLocationDetails,
+  isValidLocationSearchQuery,
   LOCATION_ERROR_MESSAGES,
   loadCachedAirQuality,
   requestBrowserLocation,
@@ -53,7 +55,19 @@ const sampleSnapshot: AirQualitySnapshot = {
 };
 
 describe('airQualityService (Sections B & C)', () => {
-  it('validates 6-digit Indian PIN codes and rejects empty or malformed numeric PINs', () => {
+  it('validates 6-digit Indian PIN codes, city names, and shared formatting helpers', () => {
+    expect(isValidLocationSearchQuery('110001')).toBe(true);
+    expect(isValidLocationSearchQuery('1100')).toBe(false);
+    expect(
+      formatLocationDetails({
+        city: 'Connaught Place',
+        district: 'New Delhi',
+        region: 'Delhi',
+        country: 'India',
+        pinCode: '110001',
+      })
+    ).toBe('New Delhi, Delhi, India · PIN 110001');
+
     expect(validateLocationSearchInput(' 110001 ')).toBe('110001');
     expect(validateLocationSearchInput('Jaipur')).toBe('Jaipur');
     expect(() => validateLocationSearchInput('')).toThrow(LOCATION_ERROR_MESSAGES.INVALID_PIN);
@@ -161,6 +175,22 @@ describe('airQualityService (Sections B & C)', () => {
         errorCb?.({ code: 3, message: 'Timeout' } as GeolocationPositionError)
     );
     await expect(requestBrowserLocation()).rejects.toThrow(/timed out/i);
+
+    // Position unavailable (code 2)
+    getCurrentPosition.mockImplementationOnce(
+      (_s: PositionCallback, errorCb?: PositionErrorCallback | null) =>
+        errorCb?.({ code: 2, message: 'Unavailable' } as GeolocationPositionError)
+    );
+    await expect(requestBrowserLocation()).rejects.toThrow(/signal is unavailable/i);
+
+    // Insecure HTTP context
+    const originalSecure = window.isSecureContext;
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+    await expect(requestBrowserLocation()).rejects.toThrow(/secure HTTPS/i);
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: originalSecure,
+    });
   });
 
   it('validates live AQI snapshot payloads, rejects missing measurements, and caches valid readings', async () => {

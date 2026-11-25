@@ -31,7 +31,7 @@ export const PurifierFilterTrackerCard: React.FC = () => {
           <Wrench className="w-4 h-4 text-teal-600 dark:text-teal-400" />
         </div>
         <div>
-          <h3 className="text-base font-bold">{t('indoor.filterTitle')}</h3>
+          <h2 className="text-base font-bold">{t('indoor.filterTitle')}</h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t('indoor.filterSub')}</p>
         </div>
       </div>

@@ -191,6 +191,7 @@ export const Community: React.FC = () => {
                       <button
                         key={stepKey}
                         type="button"
+                        aria-pressed={checked}
                         onClick={() => toggleCommunityStep(stepKey)}
                         className="w-full text-left flex items-start gap-2.5 text-xs hover:bg-[#F3F3F3] dark:hover:bg-[#151C28] p-1.5 transition-colors"
                       >
@@ -227,6 +228,7 @@ export const Community: React.FC = () => {
 
                 <button
                   type="button"
+                  aria-pressed={joined}
                   onClick={() => toggleJoinCommunity(item.id)}
                   className={`px-3.5 py-1.5 border text-xs font-semibold transition-colors ${
                     joined

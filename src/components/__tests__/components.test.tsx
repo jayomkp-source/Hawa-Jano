@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
@@ -428,5 +427,71 @@ describe('UI Components & Pages Integration + Axe Accessibility (Sections B, D, 
       (v) => v.impact === 'critical' || v.impact === 'serious'
     );
     expect(severe).toEqual([]);
+  });
+
+  it('hydrates corrupted partial localStorage profile safely, edits ProfileSettingsModal, and toggles NotificationsDrawer rules', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      'airwise_user_profile_v1',
+      JSON.stringify({
+        onboardingCompleted: true,
+        location: 'corrupted-string-value',
+      })
+    );
+    mockDefaultFetch();
+
+    const { container } = render(<App />);
+
+    // Renders safely despite missing nested household/preferences and invalid location type
+    await waitFor(() => {
+      expect(screen.getAllByText(/Select Location/i).length).toBeGreaterThan(0);
+    });
+
+    // Open ProfileSettingsModal, update lifestyle & budget, verify persistence
+    await user.click(screen.getAllByRole('button', { name: 'Profile' })[0]);
+    const profileDialog = screen.getByRole('dialog');
+    expect(profileDialog).toBeInTheDocument();
+
+    const lifestyleSelect = screen.getByLabelText(/Lifestyle Role/i);
+    await user.selectOptions(lifestyleSelect, 'elderly');
+    const budgetSelect = screen.getByLabelText(/Budget Preference/i);
+    await user.selectOptions(budgetSelect, 'zero-low');
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    const stored = JSON.parse(window.localStorage.getItem('airwise_user_profile_v1') || '{}');
+    expect(stored.lifestyle).toBe('elderly');
+    expect(stored.preferences.budget).toBe('zero-low');
+
+    // Open NotificationsDrawer, toggle in-app alerts rule, and run axe-core on Indoor Air tab
+    await user.click(screen.getByRole('button', { name: /Notifications/i }));
+    const alertsDialog = screen.getByRole('dialog');
+    expect(alertsDialog).toBeInTheDocument();
+
+    const alertsToggle = screen.getByRole('button', { name: /Enable In-App Alerts/i });
+    expect(alertsToggle).toHaveAttribute('aria-pressed', 'true');
+    await user.click(alertsToggle);
+    expect(screen.getByRole('button', { name: /Enable In-App Alerts/i })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Indoor Air' }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Room Size/i)).toBeInTheDocument();
+    });
+    const indoorAxe = await axe.run(container, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
+    expect(
+      indoorAxe.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
+    ).toEqual([]);
   });
 });

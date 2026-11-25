@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Bell, Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import { formatTimestamp } from '../../utils/aqi';
 
 export const NotificationsDrawer: React.FC = () => {
@@ -17,16 +18,8 @@ export const NotificationsDrawer: React.FC = () => {
     setActiveTab,
   } = useApp();
 
-  useEffect(() => {
-    if (!isNotificationsOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsNotificationsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isNotificationsOpen, setIsNotificationsOpen]);
+  const closeDrawer = useCallback(() => setIsNotificationsOpen(false), [setIsNotificationsOpen]);
+  const drawerRef = useModalFocus<HTMLDivElement>(isNotificationsOpen, closeDrawer);
 
   if (!isNotificationsOpen) return null;
 
@@ -49,7 +42,11 @@ export const NotificationsDrawer: React.FC = () => {
         }
       }}
     >
-      <div className="w-full max-w-md h-full bg-white dark:bg-[#0B0F17] border-l border-[#DADADA] dark:border-[#222B3A] flex flex-col">
+      <div
+        ref={drawerRef}
+        tabIndex={-1}
+        className="w-full max-w-md h-full bg-white dark:bg-[#0B0F17] border-l border-[#DADADA] dark:border-[#222B3A] flex flex-col focus:outline-none"
+      >
         <div className="p-5 border-b border-[#DADADA] dark:border-[#222B3A] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 flex items-center justify-center">
@@ -139,6 +136,8 @@ export const NotificationsDrawer: React.FC = () => {
               </div>
               <button
                 type="button"
+                aria-pressed={notificationSettings.enabled}
+                aria-label={`${t('modals.enableAlerts')}: ${notificationSettings.enabled ? t('common.on') : t('common.off')}`}
                 onClick={() => updateNotificationSettings({ enabled: !notificationSettings.enabled })}
                 className={`px-3 py-1 text-xs font-mono border ${
                   notificationSettings.enabled
@@ -205,6 +204,8 @@ export const NotificationsDrawer: React.FC = () => {
                   <span className="text-sm">{item.label}</span>
                   <button
                     type="button"
+                    aria-pressed={active}
+                    aria-label={`${item.label}: ${active ? t('common.on') : t('common.off')}`}
                     onClick={() => updateNotificationSettings({ [item.key]: !active })}
                     className={`px-2.5 py-1 text-xs font-mono border ${
                       active

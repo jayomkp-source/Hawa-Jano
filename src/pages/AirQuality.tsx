@@ -90,6 +90,7 @@ export const AirQuality: React.FC = () => {
           >
             <button
               type="button"
+              aria-pressed={activeScale === 'IN_NAQI'}
               onClick={() => updateProfile({ preferredScale: 'IN_NAQI' })}
               className={`px-3 py-1.5 text-xs font-mono font-semibold transition-colors ${
                 activeScale === 'IN_NAQI'
@@ -101,6 +102,7 @@ export const AirQuality: React.FC = () => {
             </button>
             <button
               type="button"
+              aria-pressed={activeScale === 'US_EPA'}
               onClick={() => updateProfile({ preferredScale: 'US_EPA' })}
               className={`px-3 py-1.5 text-xs font-mono font-semibold transition-colors ${
                 activeScale === 'US_EPA'

@@ -417,4 +417,179 @@ describe('Express backend /api/* integration (Sections A, B, C, D & Security)', 
     const badJsonRes = await request(badJsonApp).post('/api/gemini/routine').send({});
     expect(badJsonRes.status).toBe(502);
   });
+
+  it('supports city search caching, WAQI station agency attribution, and empty Gemini recommendation guard', async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('geocoding-api.open-meteo.com')) {
+        return jsonRes({
+          results: [
+            {
+              name: 'Mumbai',
+              admin2: 'Mumbai Suburban',
+              admin1: 'Maharashtra',
+              country: 'India',
+              country_code: 'IN',
+              latitude: 19.076,
+              longitude: 72.8777,
+            },
+          ],
+        });
+      }
+      if (url.includes('api.waqi.info')) {
+        return jsonRes({
+          status: 'ok',
+          data: {
+            aqi: 142,
+            city: { name: 'Bandra Kurla Complex, Mumbai' },
+            time: { iso: '2026-11-25T10:30:00+05:30' },
+            attributions: [{ name: 'MPCB - Maharashtra Pollution Control Board' }],
+          },
+        });
+      }
+      if (url.includes('air-quality-api.open-meteo.com')) {
+        return jsonRes({
+          current: {
+            time: '2026-11-25T10:00',
+            pm2_5: 55,
+            pm10: 98,
+            nitrogen_dioxide: 40,
+            ozone: 32,
+            carbon_monoxide: 700,
+            sulphur_dioxide: 10,
+            us_aqi: 120,
+          },
+          hourly: { time: ['2026-11-25T10:00'], pm2_5: [55], pm10: [98], nitrogen_dioxide: [40], ozone: [32], carbon_monoxide: [700], us_aqi: [120] },
+        });
+      }
+      return jsonRes({
+        current: { temperature_2m: 28, relative_humidity_2m: 66, wind_speed_10m: 12, wind_direction_10m: 240, weather_code: 1, is_day: 1 },
+        hourly: { temperature_2m: [28], relative_humidity_2m: [66], wind_speed_10m: [12] },
+      });
+    }) as unknown as typeof fetch;
+
+    const prevWaqiKey = process.env.WAQI_API_KEY;
+    process.env.WAQI_API_KEY = 'test-waqi-token';
+    try {
+      const app = createApp({ fetchFn, getGeminiClient: () => null, disableRateLimit: true });
+
+      // City lookup & cache hit
+      const city1 = await request(app).get('/api/geocode?q=Mumbai');
+      expect(city1.status).toBe(200);
+      expect(city1.body.results[0]).toMatchObject({
+        city: 'Mumbai',
+        region: 'Maharashtra',
+        countryCode: 'IN',
+      });
+      const callsAfterFirst = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+      const city2 = await request(app).get('/api/geocode?q=Mumbai');
+      expect(city2.status).toBe(200);
+      expect((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterFirst);
+
+      // WAQI monitoring station + agency attribution enrichment
+      const waqiRes = await request(app).get(
+        '/api/air-quality?lat=19.08&lon=72.88&name=Mumbai&countryCode=IN'
+      );
+      expect(waqiRes.status).toBe(200);
+      expect(waqiRes.body.stationCoverage).toBe('verified');
+      expect(waqiRes.body.stationName).toContain('Bandra Kurla Complex, Mumbai');
+      expect(waqiRes.body.stationName).toContain('MPCB');
+      expect(waqiRes.body.scales.US_EPA.value).toBe(142);
+    } finally {
+      if (prevWaqiKey === undefined) {
+        delete process.env.WAQI_API_KEY;
+      } else {
+        process.env.WAQI_API_KEY = prevWaqiKey;
+      }
+    }
+
+    // Empty recommendations array from Gemini returns 502 instead of invalid empty plan
+    const emptyRecApp = createApp({
+      getGeminiClient: () => ({
+        models: {
+          generateContent: vi.fn(async () => ({
+            text: JSON.stringify({ aqiSummary: 'Summary', safetyNote: 'Note', recommendations: [] }),
+          })),
+          generateContentStream: vi.fn(async () => (async function* () {})()),
+        },
+      }),
+      disableRateLimit: true,
+    });
+    const emptyRecRes = await request(emptyRecApp).post('/api/gemini/routine').send({});
+    expect(emptyRecRes.status).toBe(502);
+  });
+
+  it('isolates rate limits per proxy X-Forwarded-For IP, rejects non-HTTP origins, strips leading model turns, and sets no-store on AI responses', async () => {
+    const generateSpy = vi.fn<GeminiClientLike['models']['generateContent']>(async () => ({
+      text: 'Stay indoors when haze spikes.',
+    }));
+    const app = createApp({
+      rateLimitMaxPerMinute: { ai: 1, data: 1 },
+      getGeminiClient: () => ({
+        models: {
+          generateContent: generateSpy,
+          generateContentStream: vi.fn(async () => (async function* () {})()),
+        },
+      }),
+    });
+
+    // Rejects non-HTTP/HTTPS protocol origins
+    const badProto = await request(app).get('/api/health').set('Origin', 'javascript://evil');
+    expect(badProto.status).toBe(403);
+
+    // Rate-limit isolation by X-Forwarded-For (trust proxy = 1)
+    const ip1First = await request(app).get('/api/health').set('X-Forwarded-For', '203.0.113.10');
+    const ip1Second = await request(app).get('/api/health').set('X-Forwarded-For', '203.0.113.10');
+    const ip2First = await request(app).get('/api/health').set('X-Forwarded-For', '203.0.113.11');
+    expect(ip1First.status).toBe(200);
+    expect(ip1Second.status).toBe(429);
+    expect(ip2First.status).toBe(200);
+
+    // Strips leading model greeting turn & sets Cache-Control: no-store
+    const chatRes = await request(app)
+      .post('/api/gemini/chat')
+      .set('X-Forwarded-For', '203.0.113.12')
+      .send({
+        messages: [
+          { role: 'assistant', content: 'Welcome greeting' },
+          { role: 'user', content: 'How is PM2.5 today?' },
+        ],
+      });
+    expect(chatRes.status).toBe(200);
+    expect(chatRes.headers['cache-control']).toContain('no-store');
+    const firstArg = generateSpy.mock.calls[0]?.[0] as { contents?: Array<{ role: string }> } | undefined;
+    expect(firstArg?.contents?.[0]?.role).toBe('user');
+
+    // Routine endpoint sets Cache-Control: no-store even on validation/success
+    const routineApp = createApp({
+      getGeminiClient: () => ({
+        models: {
+          generateContent: vi.fn(async () => ({
+            text: JSON.stringify({
+              aqiSummary: 'OK',
+              safetyNote: 'Safe',
+              recommendations: [
+                {
+                  id: 'r1',
+                  timeBlock: 'morning',
+                  whatToDo: 'Walk indoors',
+                  whyItMatters: 'Smog',
+                  howToDoIt: 'Keep doors shut',
+                  estimatedImpact: 'High',
+                  cost: 'Free',
+                  difficulty: 'Easy',
+                  whoBenefits: 'All',
+                },
+              ],
+            }),
+          })),
+          generateContentStream: vi.fn(async () => (async function* () {})()),
+        },
+      }),
+      disableRateLimit: true,
+    });
+    const routineRes = await request(routineApp).post('/api/gemini/routine').send({});
+    expect(routineRes.status).toBe(200);
+    expect(routineRes.headers['cache-control']).toContain('no-store');
+  });
 });

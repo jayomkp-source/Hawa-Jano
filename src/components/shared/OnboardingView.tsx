@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
   LocateFixed,
@@ -13,6 +13,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
 import {
+  formatLocationDetails,
+  isValidLocationSearchQuery,
   requestBrowserLocation,
   searchLocations,
 } from '../../services/airQualityService';
@@ -60,6 +62,14 @@ export const OnboardingView: React.FC = () => {
   const [diet, setDiet] = useState<DietPreference>(profile.preferences.diet);
   const [budget, setBudget] = useState<BudgetPreference>(profile.preferences.budget);
 
+  const searchAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      searchAbortRef.current?.abort();
+    };
+  }, []);
+
   const handleGeolocation = async () => {
     setLocLoading(true);
     setLocError(null);
@@ -76,24 +86,34 @@ export const OnboardingView: React.FC = () => {
   const handleSearchCity = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = cityQuery.trim();
-    if (!trimmed || (/^\d+$/.test(trimmed) && !/^\d{6}$/.test(trimmed)) || trimmed.length < 2) {
+    if (!isValidLocationSearchQuery(trimmed)) {
       setSearchResults([]);
       setLocError(t('modals.invalidPin'));
       return;
     }
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     setLocLoading(true);
     setLocError(null);
     try {
-      const found = await searchLocations(trimmed);
+      const found = await searchLocations(trimmed, controller.signal);
+      if (controller.signal.aborted) return;
       setSearchResults(found);
       if (found.length === 0) {
         setLocError(t('modals.noLocationMatch'));
       }
     } catch (err) {
+      if ((err instanceof Error && err.name === 'AbortError') || controller.signal.aborted) {
+        return;
+      }
       setSearchResults([]);
       setLocError(mapLocationErrorMessage(err, t));
     } finally {
-      setLocLoading(false);
+      if (!controller.signal.aborted) {
+        setLocLoading(false);
+      }
     }
   };
 
@@ -137,9 +157,10 @@ export const OnboardingView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex border border-[#DADADA] dark:border-[#222B3A]">
+          <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label={t('nav.languageLabel')}>
             <button
               type="button"
+              aria-pressed={language === 'en'}
               onClick={() => setLanguage('en')}
               className={`px-2 py-1.5 text-xs font-mono ${
                 language === 'en' ? 'bg-blue-600 text-white' : 'hover:bg-[#F3F3F3] dark:hover:bg-[#151C28]'
@@ -149,6 +170,7 @@ export const OnboardingView: React.FC = () => {
             </button>
             <button
               type="button"
+              aria-pressed={language === 'hi'}
               onClick={() => setLanguage('hi')}
               className={`px-2 py-1.5 text-xs ${
                 language === 'hi' ? 'bg-orange-600 text-white' : 'hover:bg-[#F3F3F3] dark:hover:bg-[#151C28]'
@@ -183,14 +205,18 @@ export const OnboardingView: React.FC = () => {
       <main className="flex-1 flex items-center justify-center p-4 sm:p-8">
         <div className="w-full max-w-2xl border border-[#DADADA] dark:border-[#222B3A] border-t-2 border-t-cyan-600 dark:border-t-cyan-400 bg-white dark:bg-[#0E131B] p-6 sm:p-10">
           {/* Step Progress Bar */}
-          <div className="grid grid-cols-4 gap-2 mb-8">
+          <ol className="grid grid-cols-4 gap-2 mb-8" aria-label="Onboarding steps">
             {[
               { num: 1, label: t('onboarding.step1Label'), bar: 'bg-sky-500' },
               { num: 2, label: t('onboarding.step2Label'), bar: 'bg-blue-500' },
               { num: 3, label: t('onboarding.step3Label'), bar: 'bg-purple-500' },
               { num: 4, label: t('onboarding.step4Label'), bar: 'bg-emerald-500' },
             ].map((item) => (
-              <div key={item.num} className="space-y-1.5">
+              <li
+                key={item.num}
+                aria-current={item.num === step ? 'step' : undefined}
+                className="space-y-1.5"
+              >
                 <div
                   className={`h-1.5 w-full ${
                     item.num <= step
@@ -201,9 +227,9 @@ export const OnboardingView: React.FC = () => {
                 <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 truncate">
                   {item.label}
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
 
           {step === 1 && (
             <div className="space-y-6">
@@ -263,14 +289,7 @@ export const OnboardingView: React.FC = () => {
               {searchResults.length > 0 && (
                 <div className="border border-[#DADADA] dark:border-[#222B3A] divide-y divide-[#DADADA] dark:divide-[#2A2A2A] max-h-48 overflow-y-auto">
                   {searchResults.map((res, i) => {
-                    const meta = [
-                      res.district && res.district !== res.city ? res.district : '',
-                      res.region || '',
-                      res.country || '',
-                      res.pinCode ? `PIN ${res.pinCode}` : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' · ');
+                    const meta = formatLocationDetails(res, ' · ');
                     return (
                       <button
                         key={`${res.latitude}-${res.longitude}-${i}`}
@@ -290,7 +309,7 @@ export const OnboardingView: React.FC = () => {
                             {res.city || res.name}
                           </strong>
                           <span className="text-xs text-neutral-500 dark:text-neutral-400 block truncate">
-                            {meta || '—'}
+                            {meta}
                           </span>
                         </span>
                         <span className="font-mono text-xs text-neutral-500 shrink-0">
@@ -350,13 +369,14 @@ export const OnboardingView: React.FC = () => {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" role="group" aria-label={t('onboarding.step2Title')}>
                 {LIFESTYLE_KEYS.map((role) => {
                   const active = lifestyle === role;
                   return (
                     <button
                       key={role}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setLifestyle(role)}
                       className={`text-left p-3.5 border transition-colors ${
                         active
@@ -470,6 +490,7 @@ export const OnboardingView: React.FC = () => {
                   <button
                     key={item.label}
                     type="button"
+                    aria-pressed={item.checked}
                     onClick={item.toggle}
                     className={`p-3.5 border text-left text-sm font-medium ${
                       item.checked
@@ -529,15 +550,23 @@ export const OnboardingView: React.FC = () => {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-2">
+                  <div
+                    id="onboarding-commute-label"
+                    className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-2"
+                  >
                     {t('onboarding.commuteRoutine')}
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  </div>
+                  <div
+                    className="grid grid-cols-2 sm:grid-cols-4 gap-2"
+                    role="group"
+                    aria-labelledby="onboarding-commute-label"
+                  >
                     {(['walk-cycle', 'public-transport', 'private-vehicle', 'wfh'] as CommuteMode[]).map(
                       (val) => (
                         <button
                           key={val}
                           type="button"
+                          aria-pressed={commuteMode === val}
                           onClick={() => setCommuteMode(val)}
                           className={`px-3 py-2.5 border text-xs font-medium ${
                             commuteMode === val
@@ -554,14 +583,22 @@ export const OnboardingView: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-2">
+                    <div
+                      id="onboarding-diet-label"
+                      className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-2"
+                    >
                       {t('onboarding.foodPreference')}
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
+                    </div>
+                    <div
+                      className="grid grid-cols-3 gap-2"
+                      role="group"
+                      aria-labelledby="onboarding-diet-label"
+                    >
                       {(['vegetarian', 'non-vegetarian', 'flexible'] as DietPreference[]).map((val) => (
                         <button
                           key={val}
                           type="button"
+                          aria-pressed={diet === val}
                           onClick={() => setDiet(val)}
                           className={`px-2 py-2 border text-xs font-medium ${
                             diet === val
@@ -576,14 +613,22 @@ export const OnboardingView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-2">
+                    <div
+                      id="onboarding-budget-label"
+                      className="block text-xs font-mono uppercase tracking-wider text-neutral-500 mb-2"
+                    >
                       {t('onboarding.budgetPreference')}
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
+                    </div>
+                    <div
+                      className="grid grid-cols-3 gap-2"
+                      role="group"
+                      aria-labelledby="onboarding-budget-label"
+                    >
                       {(['zero-low', 'moderate', 'flexible'] as BudgetPreference[]).map((val) => (
                         <button
                           key={val}
                           type="button"
+                          aria-pressed={budget === val}
                           onClick={() => setBudget(val)}
                           className={`px-2 py-2 border text-xs font-medium ${
                             budget === val

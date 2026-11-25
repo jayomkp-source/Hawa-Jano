@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import type {
   AqiScale,
   BudgetPreference,
@@ -24,16 +25,8 @@ export const ProfileSettingsModal: React.FC = () => {
     setLanguage,
   } = useApp();
 
-  useEffect(() => {
-    if (!isProfileModalOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsProfileModalOpen(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isProfileModalOpen, setIsProfileModalOpen]);
+  const closeModal = useCallback(() => setIsProfileModalOpen(false), [setIsProfileModalOpen]);
+  const modalRef = useModalFocus<HTMLDivElement>(isProfileModalOpen, closeModal);
 
   if (!isProfileModalOpen) return null;
 
@@ -49,7 +42,11 @@ export const ProfileSettingsModal: React.FC = () => {
         }
       }}
     >
-      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-blue-600 dark:border-t-blue-400 p-6">
+      <div
+        ref={modalRef}
+        tabIndex={-1}
+        className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-white dark:bg-[#0E131B] border border-[#080808] dark:border-[#222B3A] border-t-2 border-t-blue-600 dark:border-t-blue-400 p-6 focus:outline-none"
+      >
         <div className="flex items-start justify-between border-b border-[#DADADA] dark:border-[#222B3A] pb-4">
           <div>
             <p className="text-xs font-mono uppercase tracking-wider text-blue-600 dark:text-blue-400">
@@ -98,11 +95,12 @@ export const ProfileSettingsModal: React.FC = () => {
             <div className="text-xs font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
               {t('nav.languageLabel')}
             </div>
-            <div className="flex border border-[#DADADA] dark:border-[#222B3A]">
+            <div className="flex border border-[#DADADA] dark:border-[#222B3A]" role="group" aria-label={t('nav.languageLabel')}>
               {(['en', 'hi'] as SupportedLanguage[]).map((lng) => (
                 <button
                   key={lng}
                   type="button"
+                  aria-pressed={language === lng}
                   onClick={() => setLanguage(lng)}
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     language === lng
@@ -293,6 +291,7 @@ export const ProfileSettingsModal: React.FC = () => {
               <button
                 key={item.key}
                 type="button"
+                aria-pressed={item.active}
                 onClick={() =>
                   updateProfile((prev) => ({
                     ...prev,

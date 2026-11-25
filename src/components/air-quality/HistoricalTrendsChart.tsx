@@ -156,7 +156,7 @@ export const HistoricalTrendsChart: React.FC = () => {
             <Calendar className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           </span>
           <div>
-            <h3 className="text-base font-bold">{t('airQuality.historyTitle')}</h3>
+            <h2 className="text-base font-bold">{t('airQuality.historyTitle')}</h2>
             <p className="text-xs text-neutral-500 dark:text-slate-400 mt-0.5">
               {t('airQuality.historySub')}
               {historyData ? ` · ${historyData.source}` : ''}

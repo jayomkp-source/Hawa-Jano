@@ -191,6 +191,7 @@ export const EcoAlternatives: React.FC = () => {
               <div className="mt-4 pt-3 border-t border-[#DADADA] dark:border-[#222B3A] flex items-center justify-between gap-2">
                 <button
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => setSelectedId(item.id)}
                   className={`px-3 py-1.5 border text-xs font-medium flex items-center gap-1.5 transition-colors ${
                     isSelected
@@ -204,6 +205,7 @@ export const EcoAlternatives: React.FC = () => {
 
                 <button
                   type="button"
+                  aria-pressed={isCommitted}
                   onClick={() => toggleCommitEco(item.id)}
                   className={`px-3.5 py-1.5 border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                     isCommitted

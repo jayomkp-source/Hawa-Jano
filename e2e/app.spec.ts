@@ -245,10 +245,37 @@ test('full desktop user journey: PIN onboarding, all 7 tabs, theme & language sw
   await page.getByRole('button', { name: /Commit Action/i }).first().click();
   await expect(page.getByRole('button', { name: /Committed/i }).first()).toBeVisible();
 
-  // Verify Eco commitment persists across page reload
+  // 4b. Open ProfileSettingsModal, change lifestyle & budget, close, and verify persistence across reload
+  await page.getByRole('button', { name: 'Profile' }).first().click();
+  const profileDialog = page.getByRole('dialog');
+  await expect(profileDialog).toBeVisible();
+  await profileDialog.getByLabel(/Lifestyle Role/i).selectOption('elderly');
+  await profileDialog.getByLabel(/Budget Preference/i).selectOption('zero-low');
+  await profileDialog.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Open NotificationsDrawer and toggle rule
+  await page.getByRole('button', { name: /Notifications/i }).first().click();
+  const alertsDialog = page.getByRole('dialog');
+  await expect(alertsDialog).toBeVisible();
+  const ruleToggle = alertsDialog.getByRole('button', { name: /Enable In-App Alerts/i });
+  await expect(ruleToggle).toHaveAttribute('aria-pressed', 'true');
+  await ruleToggle.click();
+  await expect(alertsDialog.getByRole('button', { name: /Enable In-App Alerts/i })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Verify Eco commitment + Profile edits persist across page reload
   await page.reload();
   await page.getByRole('button', { name: 'Eco Alternatives' }).first().click();
   await expect(page.getByRole('button', { name: /Committed/i }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Profile' }).first().click();
+  await expect(page.getByLabel(/Lifestyle Role/i)).toHaveValue('elderly');
+  await expect(page.getByLabel(/Budget Preference/i)).toHaveValue('zero-low');
+  await page.getByRole('button', { name: 'Done' }).click();
 
   await page.getByRole('button', { name: 'Community' }).first().click();
   await expect(page.getByRole('tablist').first()).toBeVisible();

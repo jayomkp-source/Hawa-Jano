@@ -88,15 +88,34 @@ async function fetchWithNetworkHandling(url: string, signal?: AbortSignal): Prom
   }
 }
 
+export function isValidLocationSearchQuery(query: string): boolean {
+  const trimmed = query.trim();
+  if (!trimmed) return false;
+  if (/^\d+$/.test(trimmed) && !/^\d{6}$/.test(trimmed)) {
+    return false;
+  }
+  return trimmed.length >= 2;
+}
+
+export function formatLocationDetails(
+  item: Pick<GeocodeResult, 'district' | 'city' | 'region' | 'country' | 'pinCode'>,
+  separator = ', '
+): string {
+  const parts = [
+    item.district && item.district !== item.city ? item.district : '',
+    item.region || '',
+    item.country || '',
+  ].filter(Boolean);
+  const joined = parts.join(separator);
+  if (item.pinCode) {
+    return joined ? `${joined}${separator === ', ' ? ' · ' : separator}PIN ${item.pinCode}` : `PIN ${item.pinCode}`;
+  }
+  return joined || '—';
+}
+
 export function validateLocationSearchInput(query: string): string {
   const trimmed = query.trim();
-  if (!trimmed) {
-    throw new Error(LOCATION_ERROR_MESSAGES.INVALID_PIN);
-  }
-  if (/^\d+$/.test(trimmed) && !/^\d{6}$/.test(trimmed)) {
-    throw new Error(LOCATION_ERROR_MESSAGES.INVALID_PIN);
-  }
-  if (trimmed.length < 2) {
+  if (!isValidLocationSearchQuery(trimmed)) {
     throw new Error(LOCATION_ERROR_MESSAGES.INVALID_PIN);
   }
   return trimmed;
